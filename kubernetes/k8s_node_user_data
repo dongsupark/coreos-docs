@@ -1,0 +1,107 @@
+#cloud-config
+ssh_authorized_keys:
+ - ssh-rsa AAAAB3NzaC1yc2EAAAADAQABAAABAQDKKSJgr4IAmPBOjA/czvDUXySp7hL92DyRyj3jbLjk+dHilsqKL1qtseRtL02tbb6Yi+uWVaDFkdJAwJSTlJo8p9stPirJVtNsiK6hWw6i/2FYllp8AjVEtolO0g9J7Ie9e0aYUbcjK9q7OTnapAWzmkRwB0zUOo2zPI15LdOHHe4cM12zGibHfiJ5+BUuyrepZwY66ChHjrltvzZHbEbdlpZddgmLiQFyXbXJQaDkvsqw433ruM4MSVYVvCoAl42TiukbzLQH/gQ6oX9rHry9EWggHSi5AAc4RVCpc0vGjNV4rtTZy721+wVYsdtVdskFtMxXxVrYPoO4AH3xBIvb anton@laptop
+write-files:
+  - path: /opt/bin/wupiao
+    permissions: '0755'
+    content: |
+      #!/bin/bash
+      # [w]ait [u]ntil [p]ort [i]s [a]ctually [o]pen
+      [ -n "$1" ] && \
+        until curl -o /dev/null -sIf http://${1}; do \
+          sleep 1 && echo .;
+        done;
+      exit $?
+hostname: %HOSTNAME%
+coreos:
+  etcd2:
+    listen-client-urls: http://0.0.0.0:2379,http://0.0.0.0:4001
+    advertise-client-urls: http://0.0.0.0:2379,http://0.0.0.0:4001
+    initial-cluster: master=http://%MASTER_HOST%:2380
+    proxy: on
+  fleet:
+    metadata: "role=node"
+  units:
+    - name: systemd-networkd.service
+      command: restart
+    - name: fleet.service
+      command: start
+    - name: docker.service
+      drop-ins:
+        - name: 99-silent.conf
+          content: |
+            [Service]
+            # suppress docker verbosity on worker noes
+            Environment=DOCKER_OPTS=--log-level=error
+    - name: flanneld.service
+      command: start
+      drop-ins:
+        - name: 50-network-config.conf
+          content: |
+            [Unit]
+            Requires=etcd2.service
+            [Service]
+            ExecStartPre=/usr/bin/etcdctl set /coreos.com/network/config '{"Network":"10.244.0.0/16", "Backend": {"Type": "%FLANNEL_TYPE%"}}'
+    - name: setup-network-environment.service
+      command: start
+      content: |
+        [Unit]
+        Description=Setup Network Environment
+        Documentation=https://github.com/kelseyhightower/setup-network-environment
+        Requires=network-online.target
+        After=network-online.target
+        [Service]
+        # workaround to wait until flanneld.service service is up
+        ExecStartPre=/usr/bin/bash -c "while true; do systemctl is-active flanneld.service > /dev/null && exit 0; sleep 1; done"
+        ExecStartPre=-/usr/bin/mkdir -p /opt/bin
+        ExecStartPre=/usr/bin/curl -s -L -o /opt/bin/setup-network-environment -z /opt/bin/setup-network-environment https://github.com/kelseyhightower/setup-network-environment/releases/download/v1.0.0/setup-network-environment
+        ExecStartPre=/usr/bin/chmod +x /opt/bin/setup-network-environment
+        ExecStart=/opt/bin/setup-network-environment
+        RemainAfterExit=yes
+        Type=oneshot
+    - name: kube-proxy.service
+      command: start
+      content: |
+        [Unit]
+        Description=Kubernetes Proxy
+        Documentation=https://github.com/GoogleCloudPlatform/kubernetes
+        Requires=setup-network-environment.service
+        After=setup-network-environment.service
+        [Service]
+        ExecStartPre=/usr/bin/curl -s -L -o /opt/bin/kube-proxy -z /opt/bin/kube-proxy https://storage.googleapis.com/kubernetes-release/release/%K8S_RELEASE%/bin/linux/amd64/kube-proxy
+        ExecStartPre=/usr/bin/chmod +x /opt/bin/kube-proxy
+        # wait for kubernetes master to be up and ready
+        ExecStartPre=/opt/bin/wupiao %MASTER_HOST%:8080
+        ExecStart=/opt/bin/kube-proxy \
+        --master=http://%MASTER_HOST%:8080 \
+        --logtostderr=true
+        Restart=always
+        RestartSec=10
+    - name: kube-kubelet.service
+      command: start
+      content: |
+        [Unit]
+        Description=Kubernetes Kubelet
+        Documentation=https://github.com/GoogleCloudPlatform/kubernetes
+        Requires=setup-network-environment.service
+        After=setup-network-environment.service
+        [Service]
+        EnvironmentFile=/etc/network-environment
+        ExecStartPre=/usr/bin/curl -s -L -o /opt/bin/kubelet -z /opt/bin/kubelet https://storage.googleapis.com/kubernetes-release/release/%K8S_RELEASE%/bin/linux/amd64/kubelet
+        ExecStartPre=/usr/bin/chmod +x /opt/bin/kubelet
+        # wait for kubernetes master to be up and ready
+        ExecStartPre=/opt/bin/wupiao %MASTER_HOST%:8080
+        ExecStart=/opt/bin/kubelet \
+        --address=0.0.0.0 \
+        --port=10250 \
+        --hostname_override=${DEFAULT_IPV4} \
+        --api_servers=http://%MASTER_HOST%:8080 \
+        --allow_privileged=true \
+        --logtostderr=true \
+        --cadvisor_port=4194 \
+        --healthz_bind_address=0.0.0.0 \
+        --healthz_port=10248
+        Restart=always
+        RestartSec=10
+  update:
+    reboot-strategy: off
