@@ -6,6 +6,26 @@ Quick note:
 * *pod* - is just a container without possibility to access directly, but by kube-proxy random port
 * *service* - load balancer, VIP for pods, which allows to connect to it
 
+First of all if we would like to support DNS resolving of our services, we have to install SkyDNS. In out exmaple we will use 1 replica.:
+
+```sh
+wget -O https://raw.githubusercontent.com/GoogleCloudPlatform/kubernetes/release-1.0/cluster/addons/dns/skydns-rc.yaml.in
+kubectl create -f skydns-rc.yaml
+
+```
+
+List skydns RC:
+
+```sh
+kubectl get rc/kube-dns-v8 --namespace=kube-system
+```
+
+Stop and delete skydns RC:
+
+```sh
+kubectl delete rc kube-dns-v8 --namespace=kube-system
+```
+
 Enter your k8s master node and enter following commands:
 
 ```sh
