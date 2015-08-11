@@ -54,7 +54,7 @@ coreos:
         # workaround to wait until flanneld.service service is up
         ExecStartPre=/usr/bin/bash -c "while true; do systemctl is-active flanneld.service > /dev/null && exit 0; sleep 1; done"
         ExecStartPre=-/usr/bin/mkdir -p /opt/bin
-        ExecStartPre=/usr/bin/curl -s -L -o /opt/bin/setup-network-environment -z /opt/bin/setup-network-environment https://github.com/kelseyhightower/setup-network-environment/releases/download/v1.0.0/setup-network-environment
+        ExecStartPre=/usr/bin/curl -s -L -o /opt/bin/setup-network-environment -z /opt/bin/setup-network-environment https://github.com/kelseyhightower/setup-network-environment/releases/download/1.0.1/setup-network-environment
         ExecStartPre=/usr/bin/chmod +x /opt/bin/setup-network-environment
         ExecStart=/opt/bin/setup-network-environment
         RemainAfterExit=yes
@@ -100,7 +100,9 @@ coreos:
         --logtostderr=true \
         --cadvisor_port=4194 \
         --healthz_bind_address=0.0.0.0 \
-        --healthz_port=10248
+        --healthz_port=10248 \
+        --cluster-dns=10.100.0.254 \
+        --cluster-domain=skydns.local
         Restart=always
         RestartSec=10
   update:

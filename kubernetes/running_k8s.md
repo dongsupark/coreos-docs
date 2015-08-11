@@ -1,3 +1,5 @@
+Based on http://kubernetes.io/v1.0/examples/guestbook/README.html
+
 Once you have deployed your kubernetes cluster, let's start demo pods.
 
 Quick note:
@@ -9,9 +11,10 @@ Quick note:
 First of all if we would like to support DNS resolving of our services, we have to install SkyDNS. In out exmaple we will use 1 replica.:
 
 ```sh
-wget -O https://raw.githubusercontent.com/GoogleCloudPlatform/kubernetes/release-1.0/cluster/addons/dns/skydns-rc.yaml.in
+wget -O https://raw.githubusercontent.com/coreos/docs/master/kubernetes/skydns-rc.yaml
+wget -O https://raw.githubusercontent.com/coreos/docs/master/kubernetes/skydns-svc.yaml
 kubectl create -f skydns-rc.yaml
-
+kubectl create -f skydns-svc.yaml
 ```
 
 List skydns RC:
@@ -41,6 +44,21 @@ curl -O https://raw.githubusercontent.com/GoogleCloudPlatform/kubernetes/v1.0.1/
 kubectl create -f frontend-controller.yaml
 curl -O https://raw.githubusercontent.com/GoogleCloudPlatform/kubernetes/v1.0.1/examples/guestbook/frontend-service.yaml
 kubectl create -f frontend-service.yaml
+```
+
+Kube-UI:
+
+```sh
+curl -O https://raw.githubusercontent.com/GoogleCloudPlatform/kubernetes/release-1.0/cluster/addons/kube-ui/kube-ui-rc.yaml
+kubectl create -f kube-ui-rc.yaml
+curl -O https://raw.githubusercontent.com/GoogleCloudPlatform/kubernetes/release-1.0/cluster/addons/kube-ui/kube-ui-svc.yaml
+kubectl create -f kube-ui-svc.yaml
+```
+
+Expose KubeUI port
+
+```sh
+kubectl expose service kube-ui --namespace=kube-system --port=8080 --target-port=8080 --public-ip="192.168.122.216" --name=kube-ui-web
 ```
 
 destroy pods by one name:
