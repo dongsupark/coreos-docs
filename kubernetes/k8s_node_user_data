@@ -68,6 +68,7 @@ coreos:
         Requires=setup-network-environment.service
         After=setup-network-environment.service
         [Service]
+        LimitNOFILE=65535
         ExecStartPre=/usr/bin/curl -s -L -o /opt/bin/kube-proxy -z /opt/bin/kube-proxy https://storage.googleapis.com/kubernetes-release/release/%K8S_RELEASE%/bin/linux/amd64/kube-proxy
         ExecStartPre=/usr/bin/chmod +x /opt/bin/kube-proxy
         # wait for kubernetes master to be up and ready
