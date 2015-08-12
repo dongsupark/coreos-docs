@@ -31,7 +31,7 @@ coreos:
         - name: 99-silent.conf
           content: |
             [Service]
-            # suppress docker verbosity on worker noes
+            # suppress docker verbosity on worker nodes
             Environment=DOCKER_OPTS=--log-level=error
     - name: flanneld.service
       command: start
@@ -101,8 +101,8 @@ coreos:
         --cadvisor_port=4194 \
         --healthz_bind_address=0.0.0.0 \
         --healthz_port=10248 \
-        --cluster-dns=10.100.0.254 \
-        --cluster-domain=skydns.local
+        --cluster-dns=%K8S_DNS% \
+        --cluster-domain=%K8S_DOMAIN%
         Restart=always
         RestartSec=10
   update:

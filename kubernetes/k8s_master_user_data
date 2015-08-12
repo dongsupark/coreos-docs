@@ -12,6 +12,103 @@ write-files:
           sleep 1 && echo .;
         done;
       exit $?
+  - path: /etc/kubernetes/skydns-rc.yaml
+    permissions: '0644'
+    content: |
+      apiVersion: v1
+      kind: ReplicationController
+      metadata:
+        name: kube-dns-v8
+        namespace: kube-system
+        labels:
+          k8s-app: kube-dns
+          version: v8
+          kubernetes.io/cluster-service: "true"
+      spec:
+        replicas: 1
+        selector:
+          k8s-app: kube-dns
+          version: v8
+        template:
+          metadata:
+            labels:
+              k8s-app: kube-dns
+              version: v8
+              kubernetes.io/cluster-service: "true"
+          spec:
+            containers:
+            - name: kube2sky
+              image: gcr.io/google_containers/kube2sky:1.11
+              resources:
+                limits:
+                  cpu: 100m
+                  memory: 50Mi
+              args:
+              # command = "/kube2sky"
+              - -domain=%K8S_DOMAIN%
+              - -etcd-server=http://%HOSTNAME%:2379
+              - -kube_master_url=http://%HOSTNAME%:8080
+            - name: skydns
+              image: gcr.io/google_containers/skydns:2015-03-11-001
+              resources:
+                limits:
+                  cpu: 100m
+                  memory: 50Mi
+              args:
+              # command = "/skydns"
+              - -machines=http://%HOSTNAME%:2379
+              - -addr=0.0.0.0:53
+              - -domain=%K8S_DOMAIN%.
+              ports:
+              - containerPort: 53
+                name: dns
+                protocol: UDP
+              - containerPort: 53
+                name: dns-tcp
+                protocol: TCP
+              livenessProbe:
+                httpGet:
+                  path: /healthz
+                  port: 8080
+                  scheme: HTTP
+                initialDelaySeconds: 30
+                timeoutSeconds: 5
+            - name: healthz
+              image: gcr.io/google_containers/exechealthz:1.0
+              resources:
+                limits:
+                  cpu: 10m
+                  memory: 20Mi
+              args:
+              - -cmd=nslookup kubernetes.default.svc.skydns.local localhost >/dev/null
+              - -port=8080
+              ports:
+              - containerPort: 8080
+                protocol: TCP
+            dnsPolicy: Default  # Don't use cluster DNS.
+  - path: /etc/kubernetes/skydns-service.yaml
+    permissions: '0644'
+    content: |
+      apiVersion: v1
+      kind: Service
+      metadata:
+        name: kube-dns
+        namespace: kube-system
+        labels:
+          k8s-app: kube-dns
+          kubernetes.io/cluster-service: "true"
+          kubernetes.io/name: "KubeDNS"
+      spec:
+        selector:
+          k8s-app: kube-dns
+        clusterIP: %K8S_DNS%
+        ports:
+        - name: dns
+          port: 53
+          protocol: UDP
+        - name: dns-tcp
+          port: 53
+          protocol: TCP
 hostname: %HOSTNAME%
 coreos:
   etcd2:
@@ -35,7 +132,7 @@ coreos:
         - name: 99-silent.conf
           content: |
             [Service]
-            # suppress docker verbosity on worker noes
+            # suppress docker verbosity on worker nodes
             Environment=DOCKER_OPTS=--log-level=error
     - name: flanneld.service
       command: start
@@ -150,5 +247,20 @@ coreos:
         ExecStart=/opt/bin/kube-scheduler --master=127.0.0.1:8080
         Restart=always
         RestartSec=10
+    - name: skydns.service
+      command: start
+      content: |
+        [Unit]
+        Description=SkyDNS for Kubernetes cluster
+        Documentation=https://github.com/GoogleCloudPlatform/kubernetes
+        ConditionPathExists=!/etc/kubernetes/skydns.installed
+        Requires=kube-scheduler.service
+        After=kube-scheduler.service
+        [Service]
+        Type=oneshot
+        ExecStart=/opt/bin/kubectl create -f /etc/kubernetes/skydns-rc.yaml
+        ExecStart=/opt/bin/kubectl create -f /etc/kubernetes/skydns-service.yaml
+        ExecStart=/usr/bin/touch /etc/kubernetes/skydns.installed
+        RemainAfterExit=yes
   update:
     reboot-strategy: off

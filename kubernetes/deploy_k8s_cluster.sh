@@ -28,6 +28,9 @@ NODE_USER_DATA_TEMPLATE=$LIBVIRT_PATH/k8s_node_user_data
 CHANNEL=stable
 K8S_RELEASE=v1.0.2
 FLANNEL_TYPE=vxlan
+K8S_NET=10.100.0.0/16
+K8S_DNS=10.100.0.254
+K8S_DOMAIN=skydns.local
 RAM=1024
 CPUs=1
 
@@ -68,7 +71,7 @@ for SEQ in $(seq 1 $1); do
                 qemu-img create -f qcow2 -b $LIBVIRT_PATH/coreos_${CHANNEL}_qemu_image.img $LIBVIRT_PATH/$COREOS_HOSTNAME.qcow2
         fi
 
-        sed "s#%HOSTNAME%#$COREOS_HOSTNAME#g;s#%MASTER_HOST%#$COREOS_MASTER_HOSTNAME#g;s#%K8S_RELEASE%#$K8S_RELEASE#g;s#%FLANNEL_TYPE%#$FLANNEL_TYPE#g" $USER_DATA_TEMPLATE > $LIBVIRT_PATH/$COREOS_HOSTNAME/openstack/latest/user_data
+        sed "s#%HOSTNAME%#$COREOS_HOSTNAME#g;s#%MASTER_HOST%#$COREOS_MASTER_HOSTNAME#g;s#%K8S_RELEASE%#$K8S_RELEASE#g;s#%FLANNEL_TYPE%#$FLANNEL_TYPE#g;s#%K8S_NET%#$K8S_NET#g;s#%K8S_DNS%#$K8S_DNS#g;s#%K8S_DOMAIN%#$K8S_DOMAIN#g" $USER_DATA_TEMPLATE > $LIBVIRT_PATH/$COREOS_HOSTNAME/openstack/latest/user_data
 
         virt-install --connect qemu:///system --import --name $COREOS_HOSTNAME --ram $RAM --vcpus $CPUs --os-type=linux --os-variant=virtio26 --disk path=$LIBVIRT_PATH/$COREOS_HOSTNAME.qcow2,format=qcow2,bus=virtio --filesystem $LIBVIRT_PATH/$COREOS_HOSTNAME/,config-2,type=mount,mode=squash --vnc --noautoconsole
 done

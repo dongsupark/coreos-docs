@@ -8,13 +8,11 @@ Quick note:
 * *pod* - is just a container without possibility to access directly, but by kube-proxy random port
 * *service* - load balancer, VIP for pods, which allows to connect to it
 
-First of all if we would like to support DNS resolving of our services, we have to install SkyDNS. In out exmaple we will use 1 replica.:
+First of all if we would like to support DNS resolving of our services, we have to install SkyDNS. In out example we will use 1 replica. These steps are alredy defined in cloud-config:
 
 ```sh
-wget -O https://raw.githubusercontent.com/coreos/docs/master/kubernetes/skydns-rc.yaml
-wget -O https://raw.githubusercontent.com/coreos/docs/master/kubernetes/skydns-svc.yaml
 kubectl create -f skydns-rc.yaml
-kubectl create -f skydns-svc.yaml
+kubectl create -f skydns-service.yaml
 ```
 
 List skydns RC:
@@ -49,16 +47,28 @@ kubectl create -f frontend-service.yaml
 Kube-UI:
 
 ```sh
-curl -O https://raw.githubusercontent.com/GoogleCloudPlatform/kubernetes/release-1.0/cluster/addons/kube-ui/kube-ui-rc.yaml
+curl -O https://raw.githubusercontent.com/GoogleCloudPlatform/kubernetes/v1.0.1/cluster/addons/kube-ui/kube-ui-rc.yaml
 kubectl create -f kube-ui-rc.yaml
-curl -O https://raw.githubusercontent.com/GoogleCloudPlatform/kubernetes/release-1.0/cluster/addons/kube-ui/kube-ui-svc.yaml
+curl -O https://raw.githubusercontent.com/GoogleCloudPlatform/kubernetes/v1.0.1/cluster/addons/kube-ui/kube-ui-svc.yaml
 kubectl create -f kube-ui-svc.yaml
 ```
 
-Expose KubeUI port
+Expose KubeUI port to specific IP
 
 ```sh
 kubectl expose service kube-ui --namespace=kube-system --port=8080 --target-port=8080 --public-ip="192.168.122.216" --name=kube-ui-web
+```
+
+Decrease/increase replicas for Replication controller (in our exmaple: frontend):
+
+```sh
+kubectl scale --replicas=1 rc frontend
+```
+
+List exposes (services) (more [info](https://cloud.google.com/container-engine/docs/kubectl/expose) about expose)
+
+```sh
+kubectl get services --namespace=kube-system
 ```
 
 destroy pods by one name:
@@ -116,6 +126,10 @@ ANS: use "command:" in yaml
 * is there a difference between 'kubectl delete service -l "name==redis-master"' and 'kubectl stop service -l "name==redis-master"'?
 
 ANS: ?
+
+* which IP will see APP inside pod if someone will try to connect?
+
+ANS: APP will see docker/flannel interface host IP address
 
 ## TODO
 
