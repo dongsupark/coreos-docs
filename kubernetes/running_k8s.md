@@ -71,6 +71,12 @@ List exposes (services) (more [info](https://cloud.google.com/container-engine/d
 kubectl get services --namespace=kube-system
 ```
 
+Expose frontend demo to external IP:
+
+```sh
+kubectl expose rc frontend --port=80 --target-port=80 --public-ip="192.168.122.178" --name=guestbook-frontend
+```
+
 destroy pods by one name:
 
 ```sh
