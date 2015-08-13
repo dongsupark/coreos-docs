@@ -1,7 +1,7 @@
 #!/bin/bash -e
 
 usage() {
-        echo "Usage: $0 %k8s_cluster_size% [%pub_key_path%]"
+        echo "Usage: $0 %k8s_cluster_size% %pub_key_path%"
 }
 
 if [ "$1" == "" ]; then
@@ -49,9 +49,13 @@ if [ ! -f $MASTER_USER_DATA_TEMPLATE ]; then
         exit 1
 fi
 
-if [ -f $2 ]; then
-        PUB_KEY=$(cat $2)
+if [[ -z $2 || ! -f $2 ]]; then
+        echo "Please specify your ssh public key path"
+        usage
+        exit 1
 fi
+
+PUB_KEY=$(cat $2)
 
 for SEQ in $(seq 1 $1); do
         if [ "$SEQ" == "1" ]; then
