@@ -33,18 +33,18 @@ K8S_DNS=10.100.0.254
 K8S_DOMAIN=skydns.local
 RAM=1024
 CPUs=1
+CDIR=$(cd `dirname $0` && pwd)
 
 if [ ! -d $LIBVIRT_PATH ]; then
         mkdir -p $LIBVIRT_PATH || (echo "Can not create $LIBVIRT_PATH directory" && exit 1)
 fi
 
 if [ ! -f $MASTER_USER_DATA_TEMPLATE ]; then
-        echo "$MASTER_USER_DATA_TEMPLATE template doesn't exist"
-        exit 1
+        cp $CDIR/k8s_master_user_data $MASTER_USER_DATA_TEMPLATE || (echo "Cannot create $MASTER_USER_DATA_TEMPLATE template" && exit 1)
 fi
 
 if [ ! -f $NODE_USER_DATA_TEMPLATE ]; then
-        echo "$NODE_USER_DATA_TEMPLATE template doesn't exist"
+        cp $CDIR/k8s_node_user_data $NODE_USER_DATA_TEMPLATE || (echo "Cannot create $NODE_USER_DATA_TEMPLATE template" && exit 1)
         exit 1
 fi
 
@@ -64,7 +64,7 @@ for SEQ in $(seq 1 $1); do
         fi
 
         if [ ! -f $LIBVIRT_PATH/coreos_${CHANNEL}_qemu_image.img ]; then
-                wget http://${CHANNEL}.release.core-os.net/amd64-usr/current/coreos_production_qemu_image.img.bz2 -O - | bzcat > $LIBVIRT_PATH/coreos_${CHANNEL}_qemu_image.img
+                (curl http://${CHANNEL}.release.core-os.net/amd64-usr/current/coreos_production_qemu_image.img.bz2 | bzcat > $LIBVIRT_PATH/coreos_${CHANNEL}_qemu_image.img) || (wget http://${CHANNEL}.release.core-os.net/amd64-usr/current/coreos_production_qemu_image.img.bz2 -O - | bzcat > $LIBVIRT_PATH/coreos_${CHANNEL}_qemu_image.img)
         fi
 
         if [ ! -f $LIBVIRT_PATH/$COREOS_HOSTNAME.qcow2 ]; then
