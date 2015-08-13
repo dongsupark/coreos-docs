@@ -1,6 +1,6 @@
 #cloud-config
 ssh_authorized_keys:
- - ssh-rsa AAAAB3NzaC1yc2EAAAADAQABAAABAQDKKSJgr4IAmPBOjA/czvDUXySp7hL92DyRyj3jbLjk+dHilsqKL1qtseRtL02tbb6Yi+uWVaDFkdJAwJSTlJo8p9stPirJVtNsiK6hWw6i/2FYllp8AjVEtolO0g9J7Ie9e0aYUbcjK9q7OTnapAWzmkRwB0zUOo2zPI15LdOHHe4cM12zGibHfiJ5+BUuyrepZwY66ChHjrltvzZHbEbdlpZddgmLiQFyXbXJQaDkvsqw433ruM4MSVYVvCoAl42TiukbzLQH/gQ6oX9rHry9EWggHSi5AAc4RVCpc0vGjNV4rtTZy721+wVYsdtVdskFtMxXxVrYPoO4AH3xBIvb anton@laptop
+ - %PUB_KEY%
 write-files:
   - path: /opt/bin/wupiao
     permissions: '0755'
