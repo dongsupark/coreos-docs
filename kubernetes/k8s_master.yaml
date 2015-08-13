@@ -36,6 +36,10 @@ write-files:
               version: v8
               kubernetes.io/cluster-service: "true"
           spec:
+            volumes:
+            - name: kubeconfig
+              hostPath:
+                path: /etc/kubernetes
             containers:
             - name: kube2sky
               image: gcr.io/google_containers/kube2sky:1.11
@@ -47,7 +51,11 @@ write-files:
               # command = "/kube2sky"
               - -domain=%K8S_DOMAIN%
               - -etcd-server=http://%HOSTNAME%:2379
-              - -kube_master_url=http://%HOSTNAME%:8080
+              - -kube_master_url=https://%HOSTNAME%:6443
+              - -kubecfg_file=/etc/kubernetes/kubeconfig.yaml
+              volumeMounts:
+              - name: kubeconfig
+                mountPath: /etc/kubernetes
             - name: skydns
               image: gcr.io/google_containers/skydns:2015-03-11-001
               resources:
@@ -80,7 +88,7 @@ write-files:
                   cpu: 10m
                   memory: 20Mi
               args:
-              - -cmd=nslookup kubernetes.default.svc.skydns.local localhost >/dev/null
+              - -cmd=nslookup kubernetes.default.svc.%K8S_DOMAIN% localhost >/dev/null
               - -port=8080
               ports:
               - containerPort: 8080
@@ -127,6 +135,35 @@ write-files:
           nodePort: 30000
         selector:
           name: frontend
+  - path: /etc/kubernetes/kubeconfig.yaml.in
+    permissions: '0600'
+    content: |
+      apiVersion: v1
+      kind: Config
+      users:
+      - name: kubelet
+        user:
+          client-certificate-data: ${KUBELET_CERT}
+          client-key-data: ${KUBELET_KEY}
+      clusters:
+      - name: local
+        cluster:
+          certificate-authority-data: ${KUBELET_CA_CERT}
+      contexts:
+      - context:
+          cluster: local
+          user: kubelet
+        name: service-account-context
+      current-context: service-account-context
+  - path: /etc/kubernetes/mk-kubeconfig.sh
+    permissions: '0700'
+    content: |
+      #!/bin/bash
+      cert_dir=${CERT_DIR:-/srv/kubernetes}
+      KUBELET_CERT=$(cat $cert_dir/kubecfg.crt | base64 -w0)
+      KUBELET_KEY=$(cat $cert_dir/kubecfg.key | base64 -w0)
+      KUBELET_CA_CERT=$(cat $cert_dir/ca.crt | base64 -w0)
+      eval "echo \"$(cat /etc/kubernetes/kubeconfig.yaml.in)\"" | etcdctl set /kubeconfig
 hostname: %HOSTNAME%
 coreos:
   etcd2:
@@ -143,6 +180,8 @@ coreos:
   units:
     - name: systemd-networkd.service
       command: restart
+    - name: etcd2.service
+      command: start
 #    - name: fleet.service
 #      command: start
     - name: docker.service
@@ -165,13 +204,23 @@ coreos:
       command: start
       content: |
         [Unit]
-        Description=Generate service-account key file
-        ConditionPathExists=!/opt/bin/kube-serviceaccount.key
+        Description=Generate Kubernetes API Server certificates
+        ConditionPathExists=!/etc/kubernetes/.certs.lock
+        Requires=setup-network-environment.service
+        After=setup-network-environment.service
         [Service]
-        ExecStartPre=-/usr/bin/mkdir -p /opt/bin
-        ExecStart=/bin/openssl genrsa -out /opt/bin/kube-serviceaccount.key 2048 2>/dev/null
-        RemainAfterExit=yes
+        EnvironmentFile=/etc/network-environment
+        Environment=CERT_DIR=/etc/kubernetes
+        ExecStartPre=-/usr/sbin/groupadd -r kube-cert
+        ExecStartPre=/usr/bin/curl -s -L -o /opt/bin/make-ca-cert.sh https://raw.githubusercontent.com/GoogleCloudPlatform/kubernetes/master/cluster/saltbase/salt/generate-cert/make-ca-cert.sh
+        ExecStartPre=/usr/bin/chmod u=rwx,go= /opt/bin/make-ca-cert.sh
+        ExecStart=/opt/bin/make-ca-cert.sh ${DEFAULT_IPV4} IP:%K8S_MASTER_IP%,DNS:%HOSTNAME%,DNS:kubernetes,DNS:kubernetes.default,DNS:kubernetes.default.svc,DNS:kubernetes.default.svc.%K8S_DOMAIN%
+        ExecStartPost=/usr/bin/touch /etc/kubernetes/.certs.lock
+        # wait for etcd ready
+        ExecStartPost=/usr/bin/bash -c "while true; do etcdctl ls / > /dev/null && exit 0; sleep 1; done"
+        ExecStartPost=/etc/kubernetes/mk-kubeconfig.sh
         Type=oneshot
+        RemainAfterExit=true
     - name: download-kubectl.service
       command: start
       content: |
@@ -218,16 +267,18 @@ coreos:
         ExecStartPre=/usr/bin/chmod +x /opt/bin/kube-apiserver
         ExecStartPre=/opt/bin/wupiao 127.0.0.1:2379/v2/machines
         ExecStart=/opt/bin/kube-apiserver \
-        --service_account_key_file=/opt/bin/kube-serviceaccount.key \
+        --client-ca-file=/etc/kubernetes/ca.crt \
+        --tls-cert-file=/etc/kubernetes/server.cert \
+        --tls-private-key-file=/etc/kubernetes/server.key \
         --service_account_lookup=false \
         --admission_control=NamespaceLifecycle,NamespaceAutoProvision,LimitRanger,SecurityContextDeny,ServiceAccount,ResourceQuota \
         --runtime_config=api/v1 \
         --allow_privileged=true \
-        --insecure_bind_address=0.0.0.0 \
+        --insecure_bind_address=127.0.0.1 \
         --insecure_port=8080 \
         --kubelet_https=true \
         --secure_port=6443 \
-        --service-cluster-ip-range=10.100.0.0/16 \
+        --service-cluster-ip-range=%K8S_NET% \
         --etcd_servers=http://127.0.0.1:2379 \
         --public_address_override=${DEFAULT_IPV4} \
         --logtostderr=true
@@ -245,8 +296,8 @@ coreos:
         ExecStartPre=/usr/bin/curl -s -L -o /opt/bin/kube-controller-manager -z /opt/bin/kube-controller-manager https://storage.googleapis.com/kubernetes-release/release/%K8S_RELEASE%/bin/linux/amd64/kube-controller-manager
         ExecStartPre=/usr/bin/chmod +x /opt/bin/kube-controller-manager
         ExecStart=/opt/bin/kube-controller-manager \
-        --service_account_private_key_file=/opt/bin/kube-serviceaccount.key \
-        --root-ca-file=/var/run/kubernetes/apiserver.crt \
+        --service-account-private-key-file=/etc/kubernetes/server.key \
+        --root-ca-file=/etc/kubernetes/ca.crt \
         --master=127.0.0.1:8080 \
         --logtostderr=true
         Restart=always

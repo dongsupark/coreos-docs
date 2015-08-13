@@ -24,6 +24,8 @@ coreos:
   units:
     - name: systemd-networkd.service
       command: restart
+    - name: etcd2.service
+      command: start
 #    - name: fleet.service
 #      command: start
     - name: docker.service
@@ -59,22 +61,36 @@ coreos:
         ExecStart=/opt/bin/setup-network-environment
         RemainAfterExit=yes
         Type=oneshot
+    - name: setup-kubelet-environment.service
+      command: start
+      content: |
+        [Unit]
+        Description=Setup Kubelet Environment
+        Requires=etcd2.service
+        After=etcd2.service
+        ConditionPathExists=!/etc/kubernetes/kubeconfig.yaml
+        [Service]
+        ExecStartPre=-/usr/bin/mkdir -p /etc/kubernetes
+        ExecStart=/usr/bin/bash -c "while true; do etcdctl get /kubeconfig > /etc/kubernetes/kubeconfig.yaml && exit 0; sleep 1; done"
+        RemainAfterExit=yes
+        Type=oneshot
     - name: kube-proxy.service
       command: start
       content: |
         [Unit]
         Description=Kubernetes Proxy
         Documentation=https://github.com/GoogleCloudPlatform/kubernetes
-        Requires=setup-network-environment.service
-        After=setup-network-environment.service
+        Requires=setup-network-environment.service setup-kubelet-environment.service
+        After=setup-network-environment.service setup-kubelet-environment.service
         [Service]
         LimitNOFILE=65535
         ExecStartPre=/usr/bin/curl -s -L -o /opt/bin/kube-proxy -z /opt/bin/kube-proxy https://storage.googleapis.com/kubernetes-release/release/%K8S_RELEASE%/bin/linux/amd64/kube-proxy
         ExecStartPre=/usr/bin/chmod +x /opt/bin/kube-proxy
         # wait for kubernetes master to be up and ready
-        ExecStartPre=/opt/bin/wupiao %MASTER_HOST%:8080
+        ExecStartPre=/opt/bin/wupiao %MASTER_HOST%:6443
         ExecStart=/opt/bin/kube-proxy \
-        --master=http://%MASTER_HOST%:8080 \
+        --master=https://%MASTER_HOST%:6443 \
+        --kubeconfig=/etc/kubernetes/kubeconfig.yaml \
         --logtostderr=true
         Restart=always
         RestartSec=10
@@ -84,19 +100,20 @@ coreos:
         [Unit]
         Description=Kubernetes Kubelet
         Documentation=https://github.com/GoogleCloudPlatform/kubernetes
-        Requires=setup-network-environment.service
-        After=setup-network-environment.service
+        Requires=setup-network-environment.service setup-kubelet-environment.service
+        After=setup-network-environment.service setup-kubelet-environment.service
         [Service]
         EnvironmentFile=/etc/network-environment
         ExecStartPre=/usr/bin/curl -s -L -o /opt/bin/kubelet -z /opt/bin/kubelet https://storage.googleapis.com/kubernetes-release/release/%K8S_RELEASE%/bin/linux/amd64/kubelet
         ExecStartPre=/usr/bin/chmod +x /opt/bin/kubelet
         # wait for kubernetes master to be up and ready
-        ExecStartPre=/opt/bin/wupiao %MASTER_HOST%:8080
+        ExecStartPre=/opt/bin/wupiao %MASTER_HOST%:6443
         ExecStart=/opt/bin/kubelet \
         --address=0.0.0.0 \
         --port=10250 \
+        --kubeconfig=/etc/kubernetes/kubeconfig.yaml \
         --hostname_override=${DEFAULT_IPV4} \
-        --api_servers=http://%MASTER_HOST%:8080 \
+        --api_servers=https://%MASTER_HOST%:6443 \
         --allow_privileged=true \
         --logtostderr=true \
         --cadvisor_port=4194 \

@@ -35,9 +35,10 @@ IMAGE_URL=http://${CHANNEL}.release.core-os.net/amd64-usr/current/coreos_product
 K8S_RELEASE=v1.0.2
 FLANNEL_TYPE=vxlan
 K8S_NET=10.100.0.0/16
+K8S_MASTER_IP=10.100.0.1
 K8S_DNS=10.100.0.254
 K8S_DOMAIN=skydns.local
-RAM=1024
+RAM=512
 CPUs=1
 
 if [ ! -d $LIBVIRT_PATH ]; then
@@ -70,6 +71,7 @@ if [[ -z $2 || ! -f $2 ]]; then
         fi
 else
         PUB_KEY_PATH=$2
+        print_green "Will use this path to SSH public key: $PUB_KEY_PATH"
 fi
 
 PUB_KEY=$(cat $PUB_KEY_PATH)
@@ -103,6 +105,7 @@ for SEQ in $(seq 1 $1); do
              s#%K8S_RELEASE%#$K8S_RELEASE#g;\
              s#%FLANNEL_TYPE%#$FLANNEL_TYPE#g;\
              s#%K8S_NET%#$K8S_NET#g;\
+             s#%K8S_MASTER_IP%#$K8S_MASTER_IP#g;\
              s#%K8S_DNS%#$K8S_DNS#g;\
              s#%K8S_DOMAIN%#$K8S_DOMAIN#g" $USER_DATA_TEMPLATE > $LIBVIRT_PATH/$COREOS_HOSTNAME/openstack/latest/user_data
 
