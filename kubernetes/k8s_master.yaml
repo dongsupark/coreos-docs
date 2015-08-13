@@ -159,12 +159,12 @@ write-files:
   - path: /etc/kubernetes/mk-kubeconfig.sh
     permissions: '0700'
     content: |
-      #!/bin/bash
+      #!/bin/bash -e
       cert_dir=${CERT_DIR:-/srv/kubernetes}
       KUBELET_CERT=$(cat $cert_dir/kubecfg.crt | base64 -w0)
       KUBELET_KEY=$(cat $cert_dir/kubecfg.key | base64 -w0)
       KUBELET_CA_CERT=$(cat $cert_dir/ca.crt | base64 -w0)
-      eval "echo \"$(cat /etc/kubernetes/kubeconfig.yaml.in)\"" | etcdctl set /kubeconfig
+      eval "echo \"$(cat /etc/kubernetes/kubeconfig.yaml.in)\"" | etcdctl set /kubeconfig > /dev/null
 hostname: %HOSTNAME%
 coreos:
   etcd2:
