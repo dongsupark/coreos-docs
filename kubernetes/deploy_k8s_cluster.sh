@@ -45,7 +45,6 @@ fi
 
 if [ ! -f $NODE_USER_DATA_TEMPLATE ]; then
         cp $CDIR/k8s_node_user_data $NODE_USER_DATA_TEMPLATE || (echo "Cannot create $NODE_USER_DATA_TEMPLATE template" && exit 1)
-        exit 1
 fi
 
 for SEQ in $(seq 1 $1); do
