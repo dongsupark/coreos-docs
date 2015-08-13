@@ -30,19 +30,33 @@ kubectl delete rc kube-dns-v8 --namespace=kube-system
 Enter your k8s master node and enter following commands:
 
 ```sh
-curl -O https://raw.githubusercontent.com/GoogleCloudPlatform/kubernetes/v1.0.1/examples/guestbook/redis-master-controller.yaml
-kubectl create -f redis-master-controller.yaml
-curl -O https://raw.githubusercontent.com/GoogleCloudPlatform/kubernetes/v1.0.1/examples/guestbook/redis-master-service.yaml
-kubectl create -f redis-master-service.yaml
-curl -O https://raw.githubusercontent.com/GoogleCloudPlatform/kubernetes/v1.0.1/examples/guestbook/redis-slave-controller.yaml
-kubectl create -f redis-slave-controller.yaml
-curl -O https://raw.githubusercontent.com/GoogleCloudPlatform/kubernetes/v1.0.1/examples/guestbook/redis-slave-service.yaml
-kubectl create -f redis-slave-service.yaml
-curl -O https://raw.githubusercontent.com/GoogleCloudPlatform/kubernetes/v1.0.1/examples/guestbook/frontend-controller.yaml
-kubectl create -f frontend-controller.yaml
-curl -O https://raw.githubusercontent.com/GoogleCloudPlatform/kubernetes/v1.0.1/examples/guestbook/frontend-service.yaml
-kubectl create -f frontend-service.yaml
+kubectl create -f kubectl_demo/redis-master-controller.yaml
+kubectl create -f kubectl_demo/redis-master-service.yaml
+kubectl create -f kubectl_demo/redis-slave-controller.yaml
+kubectl create -f kubectl_demo/redis-slave-service.yaml
+kubectl create -f kubectl_demo/frontend-controller.yaml
+kubectl create -f kubectl_demo/frontend-service.yaml
 ```
+
+or just this command:
+
+```sh
+find kubectl_demo -type f -exec kubectl create -f {} \;
+```
+
+You can watch how your pods are being started:
+
+```sh
+watch kubectl get pods
+```
+
+If you want to expose service on every Kubernetes worker node you have to define service with `NodePort` type (there is an example in core user home directory):
+
+```sh
+kubectl create -f expose-frontend-to-30000-port.yaml
+```
+
+And then you will be able to access your frontpage through http://k8s-node-1:30000/ address.
 
 Kube-UI:
 
@@ -75,33 +89,6 @@ Expose frontend demo to external IP:
 
 ```sh
 kubectl expose rc frontend --port=80 --target-port=80 --public-ip="192.168.122.178" --name=guestbook-frontend
-```
-
-If you want to expose service on every Kubernetes worker node, you have to remove old `frontend` service and define NodePort:
-
-```sh
-kubectl stop service frontend
-
-```
-
-`frontend-nodeport-service.yaml` contents:
-
-```yaml
-apiVersion: v1
-kind: Service
-metadata:
-  name: frontend
-  labels:
-    name: frontend
-spec:
-  # if your cluster supports it, uncomment the following to automatically create
-  # an external load-balanced IP for the frontend service.
-  type: NodePort
-  ports:
-  - port: 80
-    nodePort: 30000
-  selector:
-    name: frontend
 ```
 
 destroy pods by one name:
@@ -166,7 +153,7 @@ ANS: APP will see docker/flannel interface host IP address
 
 * What if master goes down?
 
-ANS: ?
+ANS: Kubernetes workers can survive master node reboot.
 
 ## TODO
 

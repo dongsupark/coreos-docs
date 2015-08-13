@@ -109,6 +109,24 @@ write-files:
         - name: dns-tcp
           port: 53
           protocol: TCP
+  - path: /home/core/expose-frontend-to-30000-port.yaml
+    permissions: '0644'
+    owner: core
+    group: core
+    content: |
+      apiVersion: v1
+      kind: Service
+      metadata:
+        name: frontend-30000
+        labels:
+          name: frontend
+      spec:
+        type: NodePort
+        ports:
+        - port: 80
+          nodePort: 30000
+        selector:
+          name: frontend
 hostname: %HOSTNAME%
 coreos:
   etcd2:
@@ -120,13 +138,13 @@ coreos:
     initial-advertise-peer-urls: http://%H:2380
     initial-cluster: master=http://%H:2380
     initial-cluster-state: new
-  fleet:
-    metadata: "role=master"
+#  fleet:
+#    metadata: "role=master"
   units:
     - name: systemd-networkd.service
       command: restart
-    - name: fleet.service
-      command: start
+#    - name: fleet.service
+#      command: start
     - name: docker.service
       drop-ins:
         - name: 99-silent.conf

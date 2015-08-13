@@ -19,13 +19,13 @@ coreos:
     advertise-client-urls: http://0.0.0.0:2379,http://0.0.0.0:4001
     initial-cluster: master=http://%MASTER_HOST%:2380
     proxy: on
-  fleet:
-    metadata: "role=node"
+#  fleet:
+#    metadata: "role=node"
   units:
     - name: systemd-networkd.service
       command: restart
-    - name: fleet.service
-      command: start
+#    - name: fleet.service
+#      command: start
     - name: docker.service
       drop-ins:
         - name: 99-silent.conf
