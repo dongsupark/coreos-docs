@@ -135,7 +135,7 @@ coreos:
             # suppress docker verbosity on worker nodes
             Environment=DOCKER_OPTS=--log-level=error
     - name: flanneld.service
-      command: start
+      command: stop
       drop-ins:
         - name: 50-network-config.conf
           content: |
@@ -178,7 +178,7 @@ coreos:
         After=network-online.target
         [Service]
         # workaround to wait until flanneld.service service is up
-        ExecStartPre=/usr/bin/bash -c "while true; do systemctl is-active flanneld.service > /dev/null && exit 0; sleep 1; done"
+        #ExecStartPre=/usr/bin/bash -c "while true; do systemctl is-active flanneld.service > /dev/null && exit 0; sleep 1; done"
         ExecStartPre=-/usr/bin/mkdir -p /opt/bin
         ExecStartPre=/usr/bin/curl -s -L -o /opt/bin/setup-network-environment -z /opt/bin/setup-network-environment https://github.com/kelseyhightower/setup-network-environment/releases/download/1.0.1/setup-network-environment
         ExecStartPre=/usr/bin/chmod +x /opt/bin/setup-network-environment
