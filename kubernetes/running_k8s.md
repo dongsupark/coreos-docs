@@ -77,6 +77,33 @@ Expose frontend demo to external IP:
 kubectl expose rc frontend --port=80 --target-port=80 --public-ip="192.168.122.178" --name=guestbook-frontend
 ```
 
+If you want to expose service on every Kubernetes worker node, you have to remove old `frontend` service and define NodePort:
+
+```sh
+kubectl stop service frontend
+
+```
+
+`frontend-nodeport-service.yaml` contents:
+
+```yaml
+apiVersion: v1
+kind: Service
+metadata:
+  name: frontend
+  labels:
+    name: frontend
+spec:
+  # if your cluster supports it, uncomment the following to automatically create
+  # an external load-balanced IP for the frontend service.
+  type: NodePort
+  ports:
+  - port: 80
+    nodePort: 30000
+  selector:
+    name: frontend
+```
+
 destroy pods by one name:
 
 ```sh
@@ -106,7 +133,7 @@ kubectl delete service -l "name in (redis-master, redis-slave, frontend)"
 
 * do we really need flannel in this example?
 
-ANS: ?
+ANS: No we do not
 
 * how to run two slaves on different nodes?
 
@@ -123,7 +150,7 @@ ANS: ?
 [9] 07 Aug 15:26:56.742 # Unable to connect to MASTER: No such file or directory
 ```
 
-ANS: Have to use DNS service
+ANS: You have to use DNS service
 
 * how can I override default "sh -c /run.sh" in redis-slave container?
 
@@ -137,7 +164,11 @@ ANS: ?
 
 ANS: APP will see docker/flannel interface host IP address
 
+* What if master goes down?
+
+ANS: ?
+
 ## TODO
 
 * instead of using master hostname - set this value into etcd, then save it into environmentfile
-* add DNS service into cloud-config
+* add univeral command to expose 80 Nodeport to real IP
