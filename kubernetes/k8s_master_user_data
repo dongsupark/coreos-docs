@@ -262,5 +262,25 @@ coreos:
         ExecStart=/opt/bin/kubectl create -f /etc/kubernetes/skydns-service.yaml
         ExecStart=/usr/bin/touch /etc/kubernetes/skydns.installed
         RemainAfterExit=yes
+    - name: download_yaml.service
+      command: start
+      content: |
+        [Unit]
+        Description=Download YAML file for Kubernetes cluster demo
+        Documentation=https://github.com/GoogleCloudPlatform/kubernetes
+        ConditionPathExists=!/home/core/kubectl_demo
+        Requires=setup-network-environment.service
+        After=setup-network-environment.service
+        [Service]
+        Type=oneshot
+        User=core
+        ExecStart=/usr/bin/mkdir -p /home/core/kubectl_demo
+        ExecStart=/usr/bin/curl -so /home/core/kubectl_demo/redis-master-controller.yaml https://raw.githubusercontent.com/GoogleCloudPlatform/kubernetes/%K8S_RELEASE%/examples/guestbook/redis-master-controller.yaml
+        ExecStart=/usr/bin/curl -so /home/core/kubectl_demo/redis-master-service.yaml https://raw.githubusercontent.com/GoogleCloudPlatform/kubernetes/%K8S_RELEASE%/examples/guestbook/redis-master-service.yaml
+        ExecStart=/usr/bin/curl -so /home/core/kubectl_demo/redis-slave-controller.yaml https://raw.githubusercontent.com/GoogleCloudPlatform/kubernetes/%K8S_RELEASE%/examples/guestbook/redis-slave-controller.yaml
+        ExecStart=/usr/bin/curl -so /home/core/kubectl_demo/redis-slave-service.yaml https://raw.githubusercontent.com/GoogleCloudPlatform/kubernetes/%K8S_RELEASE%/examples/guestbook/redis-slave-service.yaml
+        ExecStart=/usr/bin/curl -so /home/core/kubectl_demo/frontend-controller.yaml https://raw.githubusercontent.com/GoogleCloudPlatform/kubernetes/%K8S_RELEASE%/examples/guestbook/frontend-controller.yaml
+        ExecStart=/usr/bin/curl -so /home/core/kubectl_demo/frontend-service.yaml https://raw.githubusercontent.com/GoogleCloudPlatform/kubernetes/%K8S_RELEASE%/examples/guestbook/frontend-service.yaml
+        RemainAfterExit=yes
   update:
     reboot-strategy: off
