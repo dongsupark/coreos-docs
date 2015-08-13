@@ -158,4 +158,4 @@ ANS: Kubernetes workers can survive master node reboot.
 ## TODO
 
 * instead of using master hostname - set this value into etcd, then save it into environmentfile
-* add univeral command to expose 80 Nodeport to real IP
+* add certificates into etcd2

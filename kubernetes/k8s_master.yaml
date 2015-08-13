@@ -55,6 +55,7 @@ write-files:
               - -kubecfg_file=/etc/kubernetes/kubeconfig.yaml
               volumeMounts:
               - name: kubeconfig
+                readOnly: true
                 mountPath: /etc/kubernetes
             - name: skydns
               image: gcr.io/google_containers/skydns:2015-03-11-001
