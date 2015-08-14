@@ -81,6 +81,12 @@ Make kubectl proxy available on "http://k8s-master:8001" and it will make availa
 /opt/bin/kubectl proxy --accept-hosts='^k8s-master$'
 ```
 
+Also you can nslookup your kube-ui using any pod in your default namespace:
+
+```sh
+kubectl exec %pod% -- nslookup kube-ui.kube-system.svc.skydns.local
+```
+
 Decrease/increase replicas for Replication controller (in our exmaple: frontend):
 
 ```sh
