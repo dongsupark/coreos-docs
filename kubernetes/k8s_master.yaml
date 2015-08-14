@@ -193,7 +193,7 @@ coreos:
             # suppress docker verbosity on worker nodes
             Environment=DOCKER_OPTS=--log-level=error
     - name: flanneld.service
-      command: stop
+      command: start
       drop-ins:
         - name: 50-network-config.conf
           content: |
@@ -246,7 +246,7 @@ coreos:
         After=network-online.target
         [Service]
         # workaround to wait until flanneld.service service is up
-        #ExecStartPre=/usr/bin/bash -c "while true; do systemctl is-active flanneld.service > /dev/null && exit 0; sleep 1; done"
+        ExecStartPre=/usr/bin/bash -c "while true; do systemctl is-active flanneld.service > /dev/null && exit 0; sleep 1; done"
         ExecStartPre=-/usr/bin/mkdir -p /opt/bin
         ExecStartPre=/usr/bin/curl -s -L -o /opt/bin/setup-network-environment -z /opt/bin/setup-network-environment https://github.com/kelseyhightower/setup-network-environment/releases/download/1.0.1/setup-network-environment
         ExecStartPre=/usr/bin/chmod +x /opt/bin/setup-network-environment
@@ -332,6 +332,31 @@ coreos:
         ExecStart=/opt/bin/kubectl create -f /etc/kubernetes/skydns-service.yaml
         ExecStart=/usr/bin/touch /etc/kubernetes/skydns.installed
         RemainAfterExit=yes
+    - name: kube-ui.service
+      command: start
+      content: |
+        [Unit]
+        Description=UI for Kubernetes cluster
+        Documentation=https://github.com/GoogleCloudPlatform/kubernetes
+        ConditionPathExists=!/etc/kubernetes/kube-ui.installed
+        Requires=kube-scheduler.service
+        After=kube-scheduler.service
+        [Service]
+        Type=oneshot
+        ExecStart=/opt/bin/kubectl create -f https://raw.githubusercontent.com/GoogleCloudPlatform/kubernetes/%K8S_RELEASE%/cluster/addons/kube-ui/kube-ui-rc.yaml
+        ExecStart=/opt/bin/kubectl create -f https://raw.githubusercontent.com/GoogleCloudPlatform/kubernetes/%K8S_RELEASE%/cluster/addons/kube-ui/kube-ui-svc.yaml
+        ExecStart=/usr/bin/touch /etc/kubernetes/kube-ui.installed
+        RemainAfterExit=yes
+    - name: kubectl-proxy.service
+      command: start
+      content: |
+        [Unit]
+        Description=Proxy for Kubernetes cluster
+        Documentation=https://github.com/GoogleCloudPlatform/kubernetes
+        Requires=kube-scheduler.service
+        After=kube-scheduler.service
+        [Service]
+        ExecStart=/opt/bin/kubectl proxy --accept-hosts=^%HOSTNAME%$
     - name: download_yaml.service
       command: start
       content: |

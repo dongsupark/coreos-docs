@@ -15,6 +15,12 @@ kubectl create -f skydns-rc.yaml
 kubectl create -f skydns-service.yaml
 ```
 
+List instances from all namespaces:
+
+```sh
+kubectl get pods --all-namespaces
+```
+
 List skydns RC:
 
 ```sh
@@ -58,7 +64,9 @@ kubectl create -f expose-frontend-to-30000-port.yaml
 
 And then you will be able to access your frontpage through http://k8s-node-1:30000/ address.
 
-Kube-UI:
+Kube-UI in this exmaple is availabe on this URL: http://k8s-master:8001/api/v1/proxy/namespaces/kube-system/services/kube-ui/
+
+Manual steps are following:
 
 ```sh
 curl -O https://raw.githubusercontent.com/GoogleCloudPlatform/kubernetes/v1.0.1/cluster/addons/kube-ui/kube-ui-rc.yaml
@@ -67,10 +75,10 @@ curl -O https://raw.githubusercontent.com/GoogleCloudPlatform/kubernetes/v1.0.1/
 kubectl create -f kube-ui-svc.yaml
 ```
 
-Expose KubeUI port to specific IP
+Make kubectl proxy available on "http://k8s-master:8001" and it will make available Kube-UI on this URL: http://k8s-master:8001/api/v1/proxy/namespaces/kube-system/services/kube-ui/
 
 ```sh
-kubectl expose service kube-ui --namespace=kube-system --port=8080 --target-port=8080 --public-ip="192.168.122.216" --name=kube-ui-web
+/opt/bin/kubectl proxy --accept-hosts='^k8s-master$'
 ```
 
 Decrease/increase replicas for Replication controller (in our exmaple: frontend):
@@ -116,11 +124,17 @@ destroy services by names:
 kubectl delete service -l "name in (redis-master, redis-slave, frontend)"
 ```
 
+get nodes's IPs:
+
+```sh
+kubectl get -o template nodes --template='{{range .items}}{{range .status.addresses}}{{printf "%s\n" .address}}{{end}}{{end}}'
+```
+
 ## FAQ
 
 * do we really need flannel in this example?
 
-ANS: No we do not
+ANS: Yes, we do, as when you talk to VIP, kube-proxy forwards request to real containers' endpoint IP. And it should be accessible on any Kubernetes node.
 
 * how to run two slaves on different nodes?
 
@@ -128,7 +142,7 @@ ANS: ?
 
 * how does environments pass to redis-slave? there is no info about master in RC yaml for slaves
 
-ANS: ?
+ANS: Kubernetes automatically generates enviroments depending on namespace's services names and ports.
 
 * it seems redis-slave doesn't know anything about redis-master:
 
@@ -147,7 +161,7 @@ ANS: use "command:" in yaml
 
 ANS: ?
 
-* which IP will see APP inside pod if someone will try to connect?
+* which IP will see APP inside pod's container if someone will try to connect through VIP?
 
 ANS: APP will see docker/flannel interface host IP address
 
