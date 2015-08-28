@@ -1,6 +1,38 @@
 Based on http://kubernetes.io/v1.0/examples/guestbook/README.html
 
-Once you have deployed your kubernetes cluster, let's start demo pods.
+Install libvirt on Ubuntu:
+
+```sh
+apt-get install libvirt-bin virtinst qemu-kvm virt-manager git
+
+```
+
+Configure local resolver to use libvirt's dnsmasq:
+
+```sh
+echo 'nameserver 192.168.122.1' | sudo tee -a /etc/resolvconf/resolv.conf.d/head && sudo resolvconf -u
+```
+
+Clone this exmaple:
+
+```sh
+git clone https://github.com/endocode/coreos-docs
+```
+
+Deploy cluster:
+
+```sh
+cd coreos-docs
+git checkout kubernetes
+cd kubernetes/examples
+sudo ./deploy_k8s_cluster.sh %k8s_cluster_size% [%pub_key_path%]
+```
+
+Enter your Kubernetes master node:
+
+```sh
+ssh core@k8s-master # [-i ~/.ssh/id_rsa]
+```
 
 Quick note:
 

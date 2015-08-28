@@ -1,7 +1,7 @@
 #!/bin/bash -e
 
 usage() {
-        echo "Usage: $0 %k8s_cluster_size% %pub_key_path%"
+        echo "Usage: $0 %k8s_cluster_size% [%pub_key_path%]"
 }
 
 print_green() {
