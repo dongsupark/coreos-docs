@@ -30,27 +30,14 @@ CDIR=$(cd `dirname $0` && pwd)
 LIBVIRT_PATH=/var/lib/libvirt/images/coreos
 MASTER_USER_DATA_TEMPLATE=$CDIR/k8s_master.yaml
 NODE_USER_DATA_TEMPLATE=$CDIR/k8s_node.yaml
-CHANNEL=alpha
+CHANNEL=stable
 IMAGE_URL=http://${CHANNEL}.release.core-os.net/amd64-usr/current/coreos_production_qemu_image.img.bz2
-ETCD_DISCOVERY=$(curl -s "https://discovery.etcd.io/new?size=$1")
-K8S_RELEASE=v1.0.6
+K8S_RELEASE=v1.0.5
 FLANNEL_TYPE=vxlan
-
-ETCD_ENDPOINTS=""
-for SEQ in $(seq 1 $1); do
-        if [ "$SEQ" == "1" ]; then
-		ETCD_ENDPOINTS="http://k8s-master:2379"
-        else
-                NODE_SEQ=$[SEQ-1]
-                ETCD_ENDPOINTS="$ETCD_ENDPOINTS,http://k8s-node-$NODE_SEQ:2379"
-        fi
-done
-
-POD_NETWORK=10.2.0.0/16
-SERVICE_IP_RANGE=10.3.0.0/24
-K8S_SERVICE_IP=10.3.0.1
-DNS_SERVICE_IP=10.3.0.10
-K8S_DOMAIN=cluster.local
+K8S_NET=10.100.0.0/16
+K8S_MASTER_IP=10.100.0.1
+K8S_DNS=10.100.0.254
+K8S_DOMAIN=skydns.local
 RAM=512
 CPUs=1
 
@@ -114,16 +101,13 @@ for SEQ in $(seq 1 $1); do
 
         sed "s#%PUB_KEY%#$PUB_KEY#g;\
              s#%HOSTNAME%#$COREOS_HOSTNAME#g;\
-             s#%DISCOVERY%#$ETCD_DISCOVERY#g;\
-             s#%SERVICE_IP_RANGE%#$SERVICE_IP_RANGE#g;\
              s#%MASTER_HOST%#$COREOS_MASTER_HOSTNAME#g;\
              s#%K8S_RELEASE%#$K8S_RELEASE#g;\
              s#%FLANNEL_TYPE%#$FLANNEL_TYPE#g;\
-             s#%POD_NETWORK%#$POD_NETWORK#g;\
-             s#%K8S_SERVICE_IP%#$K8S_SERVICE_IP#g;\
-             s#%DNS_SERVICE_IP%#$DNS_SERVICE_IP#g;\
-             s#%K8S_DOMAIN%#$K8S_DOMAIN#g;\
-             s#%ETCD_ENDPOINTS%#$ETCD_ENDPOINTS#g" $USER_DATA_TEMPLATE > $LIBVIRT_PATH/$COREOS_HOSTNAME/openstack/latest/user_data
+             s#%K8S_NET%#$K8S_NET#g;\
+             s#%K8S_MASTER_IP%#$K8S_MASTER_IP#g;\
+             s#%K8S_DNS%#$K8S_DNS#g;\
+             s#%K8S_DOMAIN%#$K8S_DOMAIN#g" $USER_DATA_TEMPLATE > $LIBVIRT_PATH/$COREOS_HOSTNAME/openstack/latest/user_data
 
         virt-install --connect qemu:///system \
                      --import \

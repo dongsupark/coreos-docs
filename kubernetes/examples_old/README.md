@@ -37,7 +37,7 @@ ssh core@k8s-master # [-i ~/.ssh/id_rsa]
 Quick note:
 
 * *replication_controller* - controls the amount of pods (it runs pod)
-* *pod* - a bunch of containers
+* *pod* - is just a container without possibility to access directly, but by kube-proxy random port
 * *service* - load balancer, VIP for pods, which allows to connect to it
 
 First of all if we would like to support DNS resolving of our services, we have to install SkyDNS. In out example we will use 1 replica. These steps are alredy defined in cloud-config:
