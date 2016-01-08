@@ -14,7 +14,7 @@ write-files:
         hostNetwork: true
         containers:
         - name: kube-proxy
-          image: gcr.io/google_containers/hyperkube:v1.0.6
+          image: gcr.io/google_containers/hyperkube:%K8S_RELEASE%
           command:
           - /hyperkube
           - proxy

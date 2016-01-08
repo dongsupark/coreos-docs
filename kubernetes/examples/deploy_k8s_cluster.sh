@@ -33,7 +33,7 @@ NODE_USER_DATA_TEMPLATE=$CDIR/k8s_node.yaml
 CHANNEL=alpha
 IMAGE_URL=http://${CHANNEL}.release.core-os.net/amd64-usr/current/coreos_production_qemu_image.img.bz2
 ETCD_DISCOVERY=$(curl -s "https://discovery.etcd.io/new?size=$1")
-K8S_RELEASE=v1.0.6
+K8S_RELEASE=v1.1.3
 FLANNEL_TYPE=vxlan
 
 ETCD_ENDPOINTS=""

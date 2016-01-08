@@ -64,29 +64,33 @@ write-files:
       apiVersion: v1
       kind: ReplicationController
       metadata:
-        name: kube-dns-v9
+        name: kube-dns-v10
         namespace: kube-system
         labels:
           k8s-app: kube-dns
-          version: v9
+          version: v10
           kubernetes.io/cluster-service: "true"
       spec:
         replicas: 1
         selector:
           k8s-app: kube-dns
-          version: v9
+          version: v10
         template:
           metadata:
             labels:
               k8s-app: kube-dns
-              version: v9
+              version: v10
               kubernetes.io/cluster-service: "true"
           spec:
             containers:
             - name: etcd
               image: gcr.io/google_containers/etcd:2.0.9
               resources:
+                # keep request = limit to keep this container in guaranteed class
                 limits:
+                  cpu: 100m
+                  memory: 50Mi
+                requests:
                   cpu: 100m
                   memory: 50Mi
               command:
@@ -103,24 +107,33 @@ write-files:
               - name: etcd-storage
                 mountPath: /var/etcd/data
             - name: kube2sky
-              image: gcr.io/google_containers/kube2sky:1.11
+              image: gcr.io/google_containers/kube2sky:1.12
               resources:
+                # keep request = limit to keep this container in guaranteed class
                 limits:
+                  cpu: 100m
+                  memory: 50Mi
+                requests:
                   cpu: 100m
                   memory: 50Mi
               args:
               # command = "/kube2sky"
-              - -domain=cluster.local
+              - -domain=%K8S_DOMAIN%
             - name: skydns
-              image: gcr.io/google_containers/skydns:2015-03-11-001
+              image: gcr.io/google_containers/skydns:2015-10-13-8c72f8c
               resources:
+                # keep request = limit to keep this container in guaranteed class
                 limits:
+                  cpu: 100m
+                  memory: 50Mi
+                requests:
                   cpu: 100m
                   memory: 50Mi
               args:
               # command = "/skydns"
-              - -machines=http://localhost:4001
+              - -machines=http://127.0.0.1:4001
               - -addr=0.0.0.0:53
+              - -ns-rotate=false
               - -domain=%K8S_DOMAIN%.
               ports:
               - containerPort: 53
@@ -146,11 +159,15 @@ write-files:
             - name: healthz
               image: gcr.io/google_containers/exechealthz:1.0
               resources:
+                # keep request = limit to keep this container in guaranteed class
                 limits:
                   cpu: 10m
                   memory: 20Mi
+                requests:
+                  cpu: 10m
+                  memory: 20Mi
               args:
-              - -cmd=nslookup kubernetes.default.svc.cluster.local localhost >/dev/null
+              - -cmd=nslookup kubernetes.default.svc.%K8S_DOMAIN% 127.0.0.1 >/dev/null
               - -port=8080
               ports:
               - containerPort: 8080
@@ -158,7 +175,7 @@ write-files:
             volumes:
             - name: etcd-storage
               emptyDir: {}
-            dnsPolicy: Default
+            dnsPolicy: Default  # Don't use cluster DNS.
   - path: /etc/kubernetes/kubeconfig.yaml.in
     permissions: '0600'
     content: |
