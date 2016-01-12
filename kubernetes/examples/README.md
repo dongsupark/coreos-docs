@@ -34,6 +34,16 @@ Enter your Kubernetes master node:
 ssh core@k8s-master # [-i ~/.ssh/id_rsa]
 ```
 
+Get Tectonic `admin@example.com` password:
+
+```sh
+kubectl --namespace=tectonic-system get secret tectonic-identity-admin-password -o template --template="{{.data.password}}" | base64 -d && echo
+```
+
+Login Tectonic:
+
+https://k8s-master:32000
+
 Quick note:
 
 * *replication_controller* - controls the amount of pods (it runs pod)
