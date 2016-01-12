@@ -13,11 +13,16 @@ Configure local resolver to use libvirt's dnsmasq:
 echo 'nameserver 192.168.122.1' | sudo tee -a /etc/resolvconf/resolv.conf.d/head && sudo resolvconf -u
 ```
 
-Clone this exmaple:
+Clone this example:
 
 ```sh
 git clone https://github.com/endocode/coreos-docs
 ```
+
+Create Tectonoic credentials files:
+
+* `tectonic.lic` # raw base64 encoded licence
+* `docker.cfg` # raw base64 encoded dockercfg
 
 Deploy cluster:
 
@@ -106,7 +111,7 @@ kubectl create -f expose-frontend-to-30000-port.yaml
 
 And then you will be able to access your frontpage through http://k8s-node-1:30000/ address.
 
-Kube-UI in this exmaple is availabe on this URL: http://k8s-master:8001/api/v1/proxy/namespaces/kube-system/services/kube-ui/
+Kube-UI in this example is availabe on this URL: http://k8s-master:8001/api/v1/proxy/namespaces/kube-system/services/kube-ui/
 
 Manual steps are following:
 
@@ -137,7 +142,7 @@ kubectl exec -ti kube-dns-v8-kvd0g -c kube2sky --namespace=kube-system sh # that
 kubectl exec -ti kube-dns-v8-kvd0g -c skydns --namespace=kube-system sh # you will enter "skydns" container of "kube-dns-v8-kvd0g" pod
 ```
 
-Decrease/increase replicas for Replication controller (in our exmaple: frontend):
+Decrease/increase replicas for Replication controller (in our example: frontend):
 
 ```sh
 kubectl scale --replicas=1 rc frontend
