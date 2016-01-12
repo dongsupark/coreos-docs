@@ -96,9 +96,9 @@ write-files:
         - name: dns-tcp
           port: 53
           protocol: TCP
-      
+
       ---
-      
+
       apiVersion: v1
       kind: ReplicationController
       metadata:
@@ -402,6 +402,143 @@ write-files:
               port: 10251
             initialDelaySeconds: 15
             timeoutSeconds: 1
+  - path: /etc/kubernetes/ssl/tectonic-identity-openssl.cnf
+    permissions: '0644'
+    content: |
+      [req]
+      req_extensions = v3_req
+      distinguished_name = req_distinguished_name
+      [req_distinguished_name]
+      [ v3_req ]
+      basicConstraints = CA:FALSE
+      keyUsage = nonRepudiation, digitalSignature, keyEncipherment
+      subjectAltName = @alt_names
+      [alt_names]
+      DNS.1 = %HOSTNAME%
+      DNS.2 = identity
+      DNS.3 = identity.default
+      DNS.4 = identity.default.svc
+      DNS.5 = identity.default.svc.%K8S_DOMAIN%
+      IP.1 = %K8S_SERVICE_IP%
+  - path: /etc/kubernetes/ssl/tectonic-console-openssl.cnf
+    permissions: '0644'
+    content: |
+      [req]
+      req_extensions = v3_req
+      distinguished_name = req_distinguished_name
+      [req_distinguished_name]
+      [ v3_req ]
+      basicConstraints = CA:FALSE
+      keyUsage = nonRepudiation, digitalSignature, keyEncipherment
+      subjectAltName = @alt_names
+      [alt_names]
+      DNS.1 = %HOSTNAME%
+      DNS.2 = console
+      DNS.3 = console.default
+      DNS.4 = console.default.svc
+      DNS.5 = console.default.svc.%K8S_DOMAIN%
+      IP.1 = %K8S_SERVICE_IP%
+  - path: /etc/kubernetes/ssl/make-tectonic-ca-cert.sh
+    permissions: '0755'
+    content: |
+      #!/bin/bash -e
+      CA_TEC=ca-tec.pem
+      CA_TEC_KEY=ca-tec-key.pem
+      TEC_IDENT_SSL_CONF=tectonic-identity-openssl.cnf
+      TEC_CONS_SSL_CONF=tectonic-console-openssl.cnf
+      # Set permissions for the /etc/kubernetes/ssl directory
+      chmod 700 /etc/kubernetes/ssl
+      # inherit default 077 umask for the new files
+      docker run --rm -v /etc/kubernetes/ssl:/etc/kubernetes/ssl gcr.io/google_containers/hyperkube:%K8S_RELEASE% setfacl -d -m user::rwx /etc/kubernetes/ssl
+      # Tectonic CA
+      openssl genrsa -out $CA_TEC_KEY 2048
+      openssl req -x509 -new -nodes -key $CA_TEC_KEY -days 10000 -out $CA_TEC -subj "/CN=tectonic-ca"
+      # Tectonic identity keypairs
+      openssl genrsa -out identity-key.pem 2048
+      openssl req -new -key identity-key.pem -out identity.csr -subj "/CN=tectonic-identity" -config $TEC_IDENT_SSL_CONF
+      openssl x509 -req -in identity.csr -CA $CA_TEC -CAkey $CA_TEC_KEY -CAcreateserial -out identity.pem -days 365 -extensions v3_req -extfile $TEC_IDENT_SSL_CONF
+      # Tectonic console keypairs
+      openssl genrsa -out console-key.pem 2048
+      openssl req -new -key console-key.pem -out console.csr -subj "/CN=tectonic-console" -config $TEC_CONS_SSL_CONF
+      openssl x509 -req -in console.csr -CA $CA_TEC -CAkey $CA_TEC_KEY -CAcreateserial -out console.pem -days 365 -extensions v3_req -extfile $TEC_CONS_SSL_CONF
+  - path: /etc/kubernetes/mk-tectonic-config.sh
+    permissions: '0700'
+    content: |
+      #!/bin/bash -e
+      CERT_DIR=/etc/kubernetes/ssl
+      export PATH="$PATH:/opt/bin"
+      cd $CERT_DIR
+      generate-secrets-from-file.sh tectonic-ca-cert tectonic-ca-cert.yml cert,ca-tec.pem
+      generate-secrets-from-file.sh tectonic-identity-cert tectonic-identity-cert.yml cert,identity.pem key,identity-key.pem
+      generate-secrets-from-file.sh tectonic-console-cert tectonic-console-cert.yml cert,console.pem key,console-key.pem
+      kubectl create -f tectonic-ca-cert.yml
+      kubectl create -f tectonic-identity-cert.yml
+      kubectl create -f tectonic-console-cert.yml
+  - path: /etc/kubernetes/deployer-config.txt
+    permissions: '0644'
+    content: |
+      # This file contains the necessary user-supplied settings for Tectonic.
+      # It is intended as input to generate-deployer-config.sh
+
+      # URL for Identity DB
+      identity-db-url=postgres://postgres:password@%HOSTNAME%:5432/tectonic?sslmode=disable
+
+      # Issuer for identity; used by Identity itself, Console, and other Relying Parties of Identity.
+      identity-issuer-url=https://%HOSTNAME%:30556
+
+      # Customizes identity screens
+      identity-issuer-name=Organization ID Services
+
+      # Email address for Identity to send from.
+      identity-email-from=tectonic-identity@example.com
+
+      # Console URL
+      console-url=https://%HOSTNAME%:32000
+
+      # Email address of the identity admin user
+      identity-admin-user=admin@example.com
+
+      # Certificate Authorities for Console: This should be the name of a Kubernetes Secret
+      # containing a "config" key, whose values are PEM-formatted certificates. These
+      # will be the trusted CAs that Console uses to make https requests. If this
+      # value is empty, then the host's root CAs will be used.
+      tectonic-ca-cert-secret=tectonic-ca-cert
+
+      # Secret containing TLS cert and key for Identity
+      tectonic-identity-tls-secret=tectonic-identity-cert
+
+      # Secret containing TLS cert and key for Console
+      tectonic-console-tls-secret=tectonic-console-cert
+  - path: /etc/kubernetes/identity-emailer.json
+    permissions: '0600'
+    content: |
+      { "type": "fake" }
+  - path: /etc/kubernetes/identity-connectors.json
+    permissions: '0600'
+    content: |
+      [ { "type": "local", "id": "local" } ]
+  - path: /etc/kubernetes/tectonic-license.yml
+    permissions: '0600'
+    content: |
+      apiVersion: v1
+      kind: Secret
+      metadata:
+        name: tectonic-license
+        namespace: tectonic-system
+      type: Opaque
+      data:
+        license: %TECTONIC_LICENSE%
+  - path: /etc/kubernetes/tectonic-pull-secret.yml
+    permissions: '0600'
+    content: |
+      apiVersion: v1
+      kind: Secret
+      metadata:
+        name: tectonic-pull-secret
+        namespace: tectonic-system
+      type: kubernetes.io/dockercfg
+      data:
+        .dockercfg: %DOCKER_CFG%
 hostname: %HOSTNAME%
 coreos:
   etcd2:
@@ -520,5 +657,90 @@ coreos:
         ExecStartPost=/usr/bin/touch /etc/kubernetes/.skydns.lock
         RemainAfterExit=yes
         Type=oneshot
+    - name: tectonic-ns.service
+      command: start
+      content: |
+        [Unit]
+        ConditionPathExists=!/etc/kubernetes/.tectonic-ns.lock
+        Requires=kubelet.service
+        After=kubelet.service
+        [Service]
+        ExecStartPre=/usr/bin/bash -c "while true; do curl -v http://127.0.0.1:8080/api/v1/namespaces/tectonic-system -o /dev/null 2>&1 | grep '404 Not Found' > /dev/null && exit 0; sleep 1; done"
+        ExecStart=/usr/bin/bash -c 'curl -XPOST -d\'{"apiVersion":"v1","kind":"Namespace","metadata":{"name":"tectonic-system"}}\' "http://127.0.0.1:8080/api/v1/namespaces"'
+        ExecStartPost=/usr/bin/touch /etc/kubernetes/.tectonic-ns.lock
+        Type=oneshot
+        RemainAfterExit=true
+    - name: generate-tectonic-keys.service
+      command: start
+      content: |
+        [Unit]
+        ConditionPathExists=!/etc/kubernetes/ssl/.tectonic-certs.lock
+        Requires=network-online.target docker.service tectonic-ns.service download-kubectl.service
+        After=network-online.target docker.service tectonic-ns.service download-kubectl.service
+        [Service]
+        WorkingDirectory=/etc/kubernetes/ssl
+        ExecStartPre=/usr/bin/curl -s -L -o /opt/bin/generate-secrets-from-file.sh -z /opt/bin/generate-secrets-from-file.sh https://tectonic.com/enterprise/docs/latest/deployer/scripts/generate-secrets-from-file.sh
+        ExecStartPre=/usr/bin/chmod +x /opt/bin/generate-secrets-from-file.sh
+        ExecStartPre=/etc/kubernetes/ssl/make-tectonic-ca-cert.sh
+        # wait for kubectl ready
+        ExecStartPre=/usr/bin/bash -c "while true; do /opt/bin/kubectl get nodes && exit 0; sleep 1; done"
+        ExecStart=/etc/kubernetes/mk-tectonic-config.sh
+        ExecStartPost=/usr/bin/touch /etc/kubernetes/ssl/.tectonic-certs.lock
+        Type=oneshot
+        RemainAfterExit=true
+    - name: generate-tectonic-deployer-config.service
+      command: start
+      content: |
+        [Unit]
+        ConditionPathExists=!/etc/kubernetes/.tectonic-deployer-config.lock
+        Requires=generate-tectonic-keys.service
+        After=generate-tectonic-keys.service
+        [Service]
+        WorkingDirectory=/etc/kubernetes
+        ExecStartPre=/usr/bin/curl -s -L -o /opt/bin/generate-deployer-config.sh -z /opt/bin/generate-deployer-config.sh https://tectonic.com/enterprise/docs/latest/deployer/scripts/generate-deployer-config.sh
+        ExecStartPre=/usr/bin/chmod +x /opt/bin/generate-deployer-config.sh
+        ExecStartPre=/opt/bin/generate-deployer-config.sh deployer-config.txt tectonic-deployer-config-secret.yml
+        ExecStartPre=/opt/bin/generate-secrets-from-file.sh tectonic-identity-emailer-config tectonic-identity-emailer-config-secret.yml identity-emailer.json
+        ExecStartPre=/opt/bin/generate-secrets-from-file.sh tectonic-identity-connectors tectonic-identity-connectors-secret.yml identity-connectors.json
+        ExecStart=/opt/bin/kubectl create -f tectonic-deployer-config-secret.yml
+        ExecStart=/opt/bin/kubectl create -f tectonic-identity-emailer-config-secret.yml
+        ExecStart=/opt/bin/kubectl create -f tectonic-identity-connectors-secret.yml
+        ExecStartPost=/usr/bin/touch /etc/kubernetes/.tectonic-deployer-config.lock
+        Type=oneshot
+        RemainAfterExit=true
+    - name: run-postgres.service
+      command: start
+      content: |
+        [Unit]
+        Description=Postgres container
+        After=docker.service
+
+        [Service]
+        TimeoutSec=0
+        Restart=always
+        ExecStartPre=-/usr/bin/docker kill postgres
+        ExecStartPre=-/usr/bin/docker rm postgres
+        ExecStartPre=/usr/bin/docker pull postgres:latest
+        ExecStart=/usr/bin/docker run --rm --name postgres -e POSTGRES_USER=postgres -e POSTGRES_PASSWORD=password -e POSTGRES_DB=tectonic -v /data:/var/lib/postgresql/data -p 5432:5432 postgres
+    - name: install-tectonic.service
+      command: start
+      content: |
+        [Unit]
+        ConditionPathExists=!/etc/kubernetes/.install-tectonic.lock
+        Requires=generate-tectonic-deployer-config.service generate-tectonic-deployer-config.service run-postgres.service
+        After=generate-tectonic-deployer-config.service generate-tectonic-deployer-config.service run-postgres.service
+        [Service]
+        WorkingDirectory=/etc/kubernetes
+        ExecStartPre=/usr/bin/curl -s -L -o /etc/kubernetes/tectonic-services.yml -z /etc/kubernetes/tectonic-services.yml https://tectonic.com/enterprise/docs/latest/deployer/files/tectonic-services.yml
+        ExecStartPre=/usr/bin/curl -s -L -o /etc/kubernetes/tectonic-identity-service.yml -z /etc/kubernetes/tectonic-identity-service.yml https://tectonic.com/enterprise/docs/latest/deployer/files/tectonic-identity-service.yml
+        ExecStartPre=/usr/bin/curl -s -L -o /etc/kubernetes/tectonic-console-service.yml -z /etc/kubernetes/tectonic-console-service.yml https://tectonic.com/enterprise/docs/latest/deployer/files/tectonic-console-service.yml
+        ExecStart=/opt/bin/kubectl create -f /etc/kubernetes/tectonic-license.yml
+        ExecStart=/opt/bin/kubectl create -f /etc/kubernetes/tectonic-pull-secret.yml
+        ExecStart=/opt/bin/kubectl create -f /etc/kubernetes/tectonic-services.yml
+        ExecStart=/opt/bin/kubectl --namespace=tectonic-system create -f /etc/kubernetes/tectonic-identity-service.yml
+        ExecStart=/opt/bin/kubectl --namespace=tectonic-system create -f /etc/kubernetes/tectonic-console-service.yml
+        ExecStartPost=/usr/bin/touch /etc/kubernetes/.install-tectonic.lock
+        Type=oneshot
+        RemainAfterExit=true
   update:
     reboot-strategy: off

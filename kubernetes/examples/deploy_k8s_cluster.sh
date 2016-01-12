@@ -28,7 +28,8 @@ fi
 
 CDIR=$(cd `dirname $0` && pwd)
 LIBVIRT_PATH=/var/lib/libvirt/images/coreos
-MASTER_USER_DATA_TEMPLATE=$CDIR/k8s_master.yaml
+MASTER_USER_DATA_TEMPLATE=$CDIR/k8s_tectonic_master.yaml
+#MASTER_USER_DATA_TEMPLATE=$CDIR/k8s_master.yaml
 NODE_USER_DATA_TEMPLATE=$CDIR/k8s_node.yaml
 CHANNEL=alpha
 RELEASE=current
@@ -89,6 +90,8 @@ else
 fi
 
 PUB_KEY=$(cat $PUB_KEY_PATH)
+TECTONIC_LICENSE=$(cat $CDIR/tectonic.lic 2>/dev/null)
+DOCKER_CFG=$(cat $CDIR/docker.cfg 2>/dev/null)
 
 for SEQ in $(seq 1 $1); do
         if [ "$SEQ" == "1" ]; then
@@ -124,6 +127,8 @@ for SEQ in $(seq 1 $1); do
              s#%K8S_SERVICE_IP%#$K8S_SERVICE_IP#g;\
              s#%DNS_SERVICE_IP%#$DNS_SERVICE_IP#g;\
              s#%K8S_DOMAIN%#$K8S_DOMAIN#g;\
+             s#%TECTONIC_LICENSE%#$TECTONIC_LICENSE#g;\
+             s#%DOCKER_CFG%#$DOCKER_CFG#g;\
              s#%ETCD_ENDPOINTS%#$ETCD_ENDPOINTS#g" $USER_DATA_TEMPLATE > $LIBVIRT_PATH/$COREOS_HOSTNAME/openstack/latest/user_data
 
         virt-install --connect qemu:///system \
