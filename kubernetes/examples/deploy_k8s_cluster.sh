@@ -31,7 +31,7 @@ LIBVIRT_PATH=/var/lib/libvirt/images/coreos
 MASTER_USER_DATA_TEMPLATE=$CDIR/k8s_master.yaml
 NODE_USER_DATA_TEMPLATE=$CDIR/k8s_node.yaml
 CHANNEL=alpha
-IMAGE_URL=http://${CHANNEL}.release.core-os.net/amd64-usr/current/coreos_production_qemu_image.img.bz2
+RELEASE=current
 ETCD_DISCOVERY=$(curl -s "https://discovery.etcd.io/new?size=$1")
 K8S_RELEASE=v1.1.3
 FLANNEL_TYPE=vxlan
@@ -53,6 +53,7 @@ DNS_SERVICE_IP=10.3.0.10
 K8S_DOMAIN=cluster.local
 RAM=512
 CPUs=1
+IMG_NAME="coreos_${CHANNEL}_${RELEASE}_qemu_image.img"
 
 if [ ! -d $LIBVIRT_PATH ]; then
         mkdir -p $LIBVIRT_PATH || (echo "Can not create $LIBVIRT_PATH directory" && exit 1)
@@ -104,12 +105,12 @@ for SEQ in $(seq 1 $1); do
                 mkdir -p $LIBVIRT_PATH/$COREOS_HOSTNAME/openstack/latest || (echo "Can not create $LIBVIRT_PATH/$COREOS_HOSTNAME/openstack/latest directory" && exit 1)
         fi
 
-        if [ ! -f $LIBVIRT_PATH/coreos_${CHANNEL}_qemu_image.img ]; then
-                (curl $IMAGE_URL | bzcat > $LIBVIRT_PATH/coreos_${CHANNEL}_qemu_image.img) || (wget $IMAGE_URL -O - | bzcat > $LIBVIRT_PATH/coreos_${CHANNEL}_qemu_image.img) || (echo "Cannot download CoreOS image" && exit 1)
+        if [ ! -f $LIBVIRT_PATH/$IMG_NAME ]; then
+                wget http://${CHANNEL}.release.core-os.net/amd64-usr/${RELEASE}/coreos_production_qemu_image.img.bz2 -O - | bzcat > $LIBVIRT_PATH/$IMG_NAME || (rm -f $LIBVIRT_PATH/$IMG_NAME && echo "Failed to download image" && exit 1)
         fi
 
         if [ ! -f $LIBVIRT_PATH/$COREOS_HOSTNAME.qcow2 ]; then
-                qemu-img create -f qcow2 -b $LIBVIRT_PATH/coreos_${CHANNEL}_qemu_image.img $LIBVIRT_PATH/$COREOS_HOSTNAME.qcow2
+                qemu-img create -f qcow2 -b $LIBVIRT_PATH/$IMG_NAME $LIBVIRT_PATH/$COREOS_HOSTNAME.qcow2
         fi
 
         sed "s#%PUB_KEY%#$PUB_KEY#g;\
