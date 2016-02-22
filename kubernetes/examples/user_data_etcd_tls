@@ -1,0 +1,287 @@
+#cloud-config
+ssh_authorized_keys:
+ - ssh-rsa AAAAB3NzaC1yc2EAAAADAQABAAABAQDKKSJgr4IAmPBOjA/czvDUXySp7hL92DyRyj3jbLjk+dHilsqKL1qtseRtL02tbb6Yi+uWVaDFkdJAwJSTlJo8p9stPirJVtNsiK6hWw6i/2FYllp8AjVEtolO0g9J7Ie9e0aYUbcjK9q7OTnapAWzmkRwB0zUOo2zPI15LdOHHe4cM12zGibHfiJ5+BUuyrepZwY66ChHjrltvzZHbEbdlpZddgmLiQFyXbXJQaDkvsqw433ruM4MSVYVvCoAl42TiukbzLQH/gQ6oX9rHry9EWggHSi5AAc4RVCpc0vGjNV4rtTZy721+wVYsdtVdskFtMxXxVrYPoO4AH3xBIvb anton@laptop
+hostname: %HOSTNAME%
+write-files:
+  - path: /etc/ssl/etcd/keypair-generator.sh
+    permissions: '0700'
+    content: |
+      #!/usr/bin/bash
+
+      CERT_PATH=/etc/ssl/etcd
+      TRIGGER=$(basename $ETCD_WATCH_KEY)
+      NEW_HOST=$(basename $(dirname $ETCD_WATCH_KEY))
+      KEY_TTL=5
+
+      curl -o /dev/null -s --max-time 1 --cacert ${CERT_PATH}/ca.pem --cert ${CERT_PATH}/${HOSTNAME}.pem --key ${CERT_PATH}/${HOSTNAME}-key.pem https://$HOSTNAME:2379/v2/stats/leader
+      IS_ETCD_CLUSTER_OK=$?
+      if [ "$IS_ETCD_CLUSTER_OK" == "0" ]; then
+        echo "Cluster is already configured, stopping 'tls-generator.service' and 'etcd2-temp.service' services"
+        touch /etc/ssl/etcd/.cluster-configured.lock
+        systemctl stop etcd2-temp.service
+        systemctl stop tls-generator.service
+        exit 0
+      fi
+
+      if [[ "$TRIGGER" == "trigger" &&
+            "$ETCD_WATCH_VALUE" == "" &&
+            "$NEW_HOST" =~ ^(([a-zA-Z0-9]|[a-zA-Z0-9][a-zA-Z0-9\-]*[a-zA-Z0-9])\.)*([A-Za-z0-9]|[A-Za-z0-9][A-Za-z0-9\-]*[A-Za-z0-9])$ &&
+            ! -f "${CERT_PATH}/${NEW_HOST}.pem" &&
+            ! -f "${CERT_PATH}/${NEW_HOST}-key.pem" ]]; then
+        echo '{"CN":"'"$NEW_HOST"'","hosts":[""],"key":{"algo":"rsa","size":2048}}' | /opt/bin/cfssl gencert -ca=ca.pem -ca-key=ca-key.pem -config=ca-config.json -profile=client-server -hostname="$NEW_HOST" - | /opt/bin/cfssljson -bare $NEW_HOST
+        if [[ -f "${CERT_PATH}/${NEW_HOST}.pem" && -f "${CERT_PATH}/${NEW_HOST}-key.pem" ]]; then
+          cat ${CERT_PATH}/ca.pem | etcdctl -u "root:${PASSWORD}" set /${NEW_HOST}/ca.pem > /dev/null
+          while true; do cat ${CERT_PATH}/${NEW_HOST}.pem | etcdctl -u "root:${PASSWORD}" set --ttl ${KEY_TTL} /${NEW_HOST}/cert.pem > /dev/null && break ; sleep 1; done
+          while true; do cat ${CERT_PATH}/${NEW_HOST}-key.pem | etcdctl -u "root:${PASSWORD}" set --ttl ${KEY_TTL} /${NEW_HOST}/key.pem > /dev/null && break ; sleep 1; done
+          echo "Generated keypair for the '${NEW_HOST}' hostname"
+        fi
+      fi
+  - path: /etc/ssl/etcd/ca-config.json
+    permissions: '0644'
+    content: |
+      {
+          "signing": {
+              "default": {
+                  "expiry": "43800h"
+              },
+              "profiles": {
+                  "server": {
+                      "expiry": "43800h",
+                      "usages": [
+                          "signing",
+                          "key encipherment",
+                          "server auth"
+                      ]
+                  },
+                  "client": {
+                      "expiry": "43800h",
+                      "usages": [
+                          "signing",
+                          "key encipherment",
+                          "client auth"
+                      ]
+                  },
+                  "client-server": {
+                      "expiry": "43800h",
+                      "usages": [
+                          "signing",
+                          "key encipherment",
+                          "server auth",
+                          "client auth"
+                      ]
+                  }
+              }
+          }
+      }
+  - path: /etc/ssl/etcd/ca-csr.json
+    permissions: '0644'
+    content: |
+      {
+          "CN": "My own CA",
+          "key": {
+              "algo": "rsa",
+              "size": 2048
+          },
+          "names": [
+              {
+                  "C": "US",
+                  "L": "CA",
+                  "O": "My Company Name",
+                  "ST": "San Francisco",
+                  "OU": "Org Unit 1",
+                  "OU": "Org Unit 2"
+              }
+          ]
+      }
+coreos:
+  units:
+    - name: etcdctl-environment.service
+      command: start
+      content: |
+        [Unit]
+        ConditionPathExists=!/etc/ssl/etcd/etcdctl.env
+        [Service]
+        Environment=ETCDCTL_ENDPOINT=https://%H:2379
+        Environment=ETCDCTL_CA_FILE=/etc/ssl/etcd/ca.pem
+        Environment=ETCDCTL_CERT_FILE=/etc/ssl/etcd/%H.pem
+        Environment=ETCDCTL_KEY_FILE=/etc/ssl/etcd/%H-key.pem
+        ExecStart=/usr/bin/sh -c 'echo -e "ETCDCTL_ENDPOINT=${ETCDCTL_ENDPOINT}\nETCDCTL_CA_FILE=${ETCDCTL_CA_FILE}\nETCDCTL_CERT_FILE=${ETCDCTL_CERT_FILE}\nETCDCTL_KEY_FILE=$ETCDCTL_KEY_FILE" > /etc/ssl/etcd/etcdctl.env'
+        Type=oneshot
+    - name: user-etcdctl-environment.service
+      command: start
+      content: |
+        [Unit]
+        Requires=etcdctl-environment.service
+        After=etcdctl-environment.service
+        ConditionPathExists=/etc/ssl/etcd/etcdctl.env
+        ConditionPathExists=!/etc/ssl/etcd/user_etcdctl.env
+        [Service]
+        EnvironmentFile=/etc/ssl/etcd/etcdctl.env
+        ExecStart=/usr/bin/sh -c 'echo -e "export ETCDCTL_ENDPOINT=${ETCDCTL_ENDPOINT}\nexport ETCDCTL_CA_FILE=${ETCDCTL_CA_FILE}\nexport ETCDCTL_CERT_FILE=${ETCDCTL_CERT_FILE}\nexport ETCDCTL_KEY_FILE=$ETCDCTL_KEY_FILE" > /etc/ssl/etcd/user_etcdctl.env'
+        Type=oneshot
+    - name:  systemd-networkd.service
+      command: restart
+    - name: download-cfssl.service
+      command: start
+      content: |
+        [Unit]
+        ConditionFileIsExecutable=!/opt/bin/cfssl
+        ConditionHost=%FIRST_HOST%
+        Requires=network-online.target early-docker.service
+        After=network-online.target early-docker.service
+        Before=early-docker.target
+        
+        [Service]
+        ExecStartPre=/usr/bin/mkdir -p /opt/bin
+        # We have to use toolbox becasue of this issue https://github.com/coreos/bugs/issues/214
+        #User=root
+        #Environment=DOCKER_HOST=unix:///var/run/early-docker.sock
+        #ExecStart=/usr/bin/toolbox /usr/bin/curl -s -L -o /media/root/opt/bin/cfssl -z /media/root/opt/bin/cfssl https://pkg.cfssl.org/R1.1/cfssl_linux-amd64
+        #ExecStart=/usr/bin/toolbox /usr/bin/curl -s -L -o /media/root/opt/bin/cfssljson -z /media/root/opt/bin/cfssljson https://pkg.cfssl.org/R1.1/cfssljson_linux-amd64
+        # DEV env
+        ExecStart=/usr/bin/curl -s -L -o /opt/bin/cfssl -z /opt/bin/cfssl http://192.168.122.1/cfssl
+        ExecStart=/usr/bin/curl -s -L -o /opt/bin/cfssljson -z /opt/bin/cfssljson http://192.168.122.1/cfssljson
+        ExecStartPost=/usr/bin/sh -c '/usr/bin/chmod +x /opt/bin/{cfssl,cfssljson}'
+        Type=oneshot
+        RemainAfterExit=true
+    - name: etcd2-certs-config.service
+      command: start
+      content: |
+        [Unit]
+        ConditionPathExists=!/etc/ssl/etcd/.certs.lock
+        ConditionHost=%FIRST_HOST%
+        Requires=download-cfssl.service
+        After=download-cfssl.service
+        
+        [Service]
+        WorkingDirectory=/etc/ssl/etcd
+        ExecStartPre=/usr/bin/sh -c '/opt/bin/cfssl gencert -initca ca-csr.json | /opt/bin/cfssljson -bare ca -'
+        ExecStart=/usr/bin/sh -c 'echo \'{"CN":"%H","hosts":[""],"key":{"algo":"rsa","size":2048}}\' | /opt/bin/cfssl gencert -ca=ca.pem -ca-key=ca-key.pem -config=ca-config.json -profile=client-server -hostname="%H" - | /opt/bin/cfssljson -bare %H && /usr/bin/chown etcd:etcd /etc/ssl/etcd/%H-key.pem'
+        ExecStartPost=/usr/bin/touch /etc/ssl/etcd/.certs.lock
+        RemainAfterExit=true
+        TimeoutStartSec=0
+    - name: etcd2-temp.service
+      command: start
+      content: |
+        [Unit]
+        ConditionPathExists=!/etc/ssl/etcd/.cluster-configured.lock
+        ConditionHost=%FIRST_HOST%
+        Requires=etcd2-certs-config.service
+        After=etcd2-certs-config.service
+        
+        [Service]
+        User=etcd
+        Environment=ETCD_DATA_DIR=/tmp/etcd2
+        Environment=ETCD_NAME=%m
+        Environment=ETCD_CERT_FILE=/etc/ssl/etcd/%H.pem
+        Environment=ETCD_KEY_FILE=/etc/ssl/etcd/%H-key.pem
+        Environment=ETCD_ADVERTISE_CLIENT_URLS=https://%H:2381
+        Environment=ETCD_LISTEN_CLIENT_URLS=https://0.0.0.0:2381
+        Environment=ETCD_LISTEN_PEER_URLS=http://127.0.0.1:2382
+        Environment=PASSWORD=%RANDOM_PASS%
+        ExecStartPre=/bin/sh -c 'while true; do if [ -r /etc/ssl/etcd/%H.pem ]; then exit 0; else sleep 1; fi; done'
+        ExecStart=/usr/bin/etcd2
+        ExecStartPost=/bin/sh -c 'while true; do curl -s -X PUT --cacert /etc/ssl/etcd/ca.pem https://%H:2381/v2/auth/users/root -d \'{"user":"root","password":"${PASSWORD}"}\' | grep -q \'{"user":"root","roles":\\["root"\\]}\' && curl -s -X PUT --cacert /etc/ssl/etcd/ca.pem https://%H:2381/v2/auth/enable && curl -u "root:${PASSWORD}" -s -X PUT --cacert /etc/ssl/etcd/ca.pem https://%H:2381/v2/auth/roles/guest -d \'{"role":"guest","revoke":{"kv":{"write":["*"],"read":["*"]}}}\' | grep -q \'{"role":"guest","permissions":{"kv":{"read":\\[\\],"write":\\[\\]}}}\' && exit 0; sleep 1; done'
+        ExecStopPost=/usr/bin/rm -rf /tmp/etcd2
+        TimeoutStartSec=0
+        Type=notify
+    - name: tls-generator.service
+      command: start
+      content: |
+        [Unit]
+        ConditionPathExists=!/etc/ssl/etcd/.cluster-configured.lock
+        ConditionHost=%FIRST_HOST%
+        Requires=etcd2-temp.service
+        After=etcd2-temp.service
+
+        [Service]
+        WorkingDirectory=/etc/ssl/etcd
+        Environment=ETCDCTL_ENDPOINT=https://%FIRST_HOST%:2381
+        Environment=ETCDCTL_CA_FILE=/etc/ssl/etcd/ca.pem
+        Environment=ETCDCTL_CERT_FILE=/etc/ssl/etcd/%H.pem
+        Environment=ETCDCTL_KEY_FILE=/etc/ssl/etcd/%H-key.pem
+        Environment=PASSWORD=%RANDOM_PASS%
+        ExecStart=/usr/bin/etcdctl -u "root:${PASSWORD}" exec-watch --recursive / -- /etc/ssl/etcd/keypair-generator.sh
+        Restart=always
+        TimeoutStartSec=0
+    - name: tls-retriever.service
+      command: stop
+      content: |
+        [Unit]
+        ConditionPathExists=!/etc/ssl/etcd/.certs.lock
+        ConditionHost=!%FIRST_HOST%
+        Requires=network-online.target
+        After=network-online.target
+
+        [Service]
+        WorkingDirectory=/etc/ssl/etcd
+        Environment=ETCDCTL_ENDPOINT=https://%FIRST_HOST%:2381
+        Environment=ETCDCTL_CA_FILE=/etc/ssl/etcd/ca.pem
+        Environment=ETCDCTL_CERT_FILE=/etc/ssl/etcd/%H.pem
+        Environment=ETCDCTL_KEY_FILE=/etc/ssl/etcd/%H-key.pem
+        Environment=PASSWORD=%RANDOM_PASS%
+        ExecStart=/usr/bin/sleep 10
+        ExecStart=/usr/bin/sh -c 'while true; do curl --max-time 1 -u "root:${PASSWORD}" -s -k ${ETCDCTL_ENDPOINT}/v2/keys/%H -XPUT -d dir=true && exit 0; sleep 1; done'
+        # Trigger until key is created
+        ExecStart=/usr/bin/sh -c 'while [ $(curl --max-time 1 -u "root:${PASSWORD}" -s -k ${ETCDCTL_ENDPOINT}/v2/keys/%H/trigger -XPUT -d value="") ]; do curl -u "root:${PASSWORD}" -s -k "${ETCDCTL_ENDPOINT}/v2/keys/%H/key.pem" | grep -vq "Key not found" && exit 0; sleep 1; done'
+        ExecStart=/usr/bin/sh -c 'echo -e $(curl -u "root:${PASSWORD}" -s -k "${ETCDCTL_ENDPOINT}/v2/keys/%H/ca.pem?wait=true&waitIndex=1" | sed \'s/.*"value":"\\(.*\\)",.*/\\1/g\') > ${ETCDCTL_CA_FILE}'
+        ExecStart=/usr/bin/sh -c 'echo -e $(curl -u "root:${PASSWORD}" -s -k "${ETCDCTL_ENDPOINT}/v2/keys/%H/cert.pem?wait=true&waitIndex=1" | sed \'s/.*"value":"\\(.*\\)","expiration".*/\\1/g\') > ${ETCDCTL_CERT_FILE}'
+        ExecStart=/usr/bin/sh -c 'umask 0077; echo -e $(curl -u "root:${PASSWORD}" -s -k "${ETCDCTL_ENDPOINT}/v2/keys/%H/key.pem?wait=true&waitIndex=1" | sed \'s/.*"value":"\\(.*\\)","expiration".*/\\1/g\') > ${ETCDCTL_KEY_FILE}'
+        ExecStart=/usr/bin/chown etcd:etcd ${ETCDCTL_KEY_FILE}
+        ExecStart=/usr/bin/touch /etc/ssl/etcd/.certs.lock
+        Type=oneshot
+        TimeoutStartSec=0
+    - name: etcd2.service
+      command: start
+      drop-ins:
+        - name: 50-wait-config.conf
+          content: |
+            [Unit]
+            Requires=etcd2-certs-config.service tls-retriever.service
+            After=etcd2-certs-config.service tls-retriever.service
+    - name: fleet.service
+      command: start
+    - name:  systemd-networkd.service
+      command: restart
+    - name: flanneld.service
+      drop-ins:
+        - name: 50-network-config.conf
+          content: |
+            [Service]
+            EnvironmentFile=/etc/ssl/etcd/etcdctl.env
+            ExecStartPre=/usr/bin/etcdctl set /coreos.com/network/config '{ "Network": "10.1.0.0/16", "Backend": {"Type": "vxlan"}}'
+      command: start
+  etcd2:
+    advertise-client-urls: https://%H:2379
+    initial-advertise-peer-urls: https://%H:2380
+    listen-client-urls: https://0.0.0.0:2379,https://0.0.0.0:4001
+    listen-peer-urls: https://0.0.0.0:2380
+    cert-file: /etc/ssl/etcd/%H.pem
+    key-file: /etc/ssl/etcd/%H-key.pem
+    trusted-ca-file: /etc/ssl/etcd/ca.pem
+    client-cert-auth: true
+    peer-cert-file: /etc/ssl/etcd/%H.pem
+    peer-key-file: /etc/ssl/etcd/%H-key.pem
+    peer-trusted-ca-file: /etc/ssl/etcd/ca.pem
+    peer-client-cert-auth: true
+    discovery: %DISCOVERY%
+  fleet:
+    public-ip: "%H"
+    metadata: "hostname=%H"
+    etcd_servers: "https://%H:2379"
+    etcd_cafile: /etc/ssl/etcd/ca.pem
+    etcd_certfile: /etc/ssl/etcd/%H.pem
+    etcd_keyfile: /etc/ssl/etcd/%H-key.pem
+  flannel:
+    # %H doesn't work with the environments file here
+    etcd_endpoints: "https://%HOSTNAME%:2379"
+    etcd_cafile: /etc/ssl/etcd/ca.pem
+    etcd_certfile: /etc/ssl/etcd/%HOSTNAME%.pem
+    etcd_keyfile: /etc/ssl/etcd/%HOSTNAME%-key.pem
+  locksmith:
+    endpoint: "https://%H:2379"
+    etcd_cafile: /etc/ssl/etcd/ca.pem
+    etcd_certfile: /etc/ssl/etcd/%H.pem
+    etcd_keyfile: /etc/ssl/etcd/%H-key.pem
+  update:
+    reboot-strategy: off
