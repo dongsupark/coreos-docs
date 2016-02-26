@@ -8,6 +8,18 @@ print_green() {
   echo -e "\e[92m$1\e[0m"
 }
 
+is_selinux_enabled() {
+  # NOTE: selinuxenabled doesn't return the selinux status correctly.
+  #       It looks like it returns 1 even if SElinux is disabled.
+  #       So we should call sestatus instead of selinuxenabled, to determine
+  #       the status reliably, especially on distros like Fedora.
+  #       - dpark 20160226
+  if [ "$(sestatus -b | grep 'SELinux status' | awk '{print $3}')" = "enabled" ]; then
+    return 1
+  fi
+  return 0
+}
+
 OS_NAME="coreos"
 
 export LIBVIRT_DEFAULT_URI=qemu:///system
@@ -155,7 +167,8 @@ for SEQ in $(seq 1 $1); do
          s#%K8S_NET%#$K8S_NET#g;\
          s#%K8S_DNS%#$K8S_DNS#g;\
          s#%K8S_DOMAIN%#$K8S_DOMAIN#g" $USER_DATA_TEMPLATE > $IMG_PATH/$VM_HOSTNAME/openstack/latest/user_data
-    if [ -n "$(selinuxenabled 2>/dev/null || echo 'SELinux')" ]; then
+    is_selinux_enabled
+    if [ "$?" -eq 1 ]; then
       # We use ISO configdrive to avoid complicated SELinux conditions
       mkisofs -input-charset utf-8 -R -V config-2 -o $IMG_PATH/$VM_HOSTNAME/configdrive.iso $IMG_PATH/$VM_HOSTNAME
       CONFIG_DRIVE="--disk path=$IMG_PATH/$VM_HOSTNAME/configdrive.iso,device=cdrom"
