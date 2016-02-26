@@ -67,11 +67,21 @@ PRIV_KEY_PATH=$(echo ${PUB_KEY_PATH} | sed 's#.pub##')
 CDIR=$(cd `dirname $0` && pwd)
 IMG_PATH=${HOME}/libvirt_images/${OS_NAME}
 RANDOM_PASS=$(openssl rand -base64 12)
-MASTER_USER_DATA_TEMPLATE=${CDIR}/k8s_master.yaml
-NODE_USER_DATA_TEMPLATE=${CDIR}/k8s_node.yaml
 ETCD_DISCOVERY=$(curl -s "https://discovery.etcd.io/new?size=$1")
 CHANNEL=alpha
 RELEASE=current
+
+[ -f "$CDIR/docker.cfg" ] && DOCKER_CFG=$(cat $CDIR/docker.cfg 2>/dev/null)
+
+if [ -f "$CDIR/tectonic.lic" ]; then
+  TECTONIC_LICENSE=$(cat $CDIR/tectonic.lic 2>/dev/null)
+  MASTER_USER_DATA_TEMPLATE=$CDIR/k8s_tectonic_master.yaml
+else
+  TECTONIC_LICENSE=
+  MASTER_USER_DATA_TEMPLATE=$CDIR/k8s_master.yaml
+fi
+NODE_USER_DATA_TEMPLATE=${CDIR}/k8s_node.yaml
+
 K8S_RELEASE=v1.1.7
 FLANNEL_TYPE=vxlan
 K8S_NET=10.100.0.0/16
@@ -130,6 +140,8 @@ for SEQ in $(seq 1 $1); do
          s#%MASTER_HOST%#$COREOS_MASTER_HOSTNAME#g;\
          s#%K8S_RELEASE%#$K8S_RELEASE#g;\
          s#%FLANNEL_TYPE%#$FLANNEL_TYPE#g;\
+         s#%TECTONIC_LICENSE%#$TECTONIC_LICENSE#g;\
+         s#%DOCKER_CFG%#$DOCKER_CFG#g;\
          s#%K8S_NET%#$K8S_NET#g;\
          s#%K8S_DNS%#$K8S_DNS#g;\
          s#%K8S_DOMAIN%#$K8S_DOMAIN#g" $USER_DATA_TEMPLATE > $IMG_PATH/$VM_HOSTNAME/openstack/latest/user_data
