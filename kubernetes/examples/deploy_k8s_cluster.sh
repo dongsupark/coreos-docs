@@ -71,6 +71,16 @@ ETCD_DISCOVERY=$(curl -s "https://discovery.etcd.io/new?size=$1")
 CHANNEL=alpha
 RELEASE=current
 
+# A distro-specific handling is needed for running virt-install --os-variant.
+# It's strange, that virt-install on Fedora does not support "virtio26" in
+# its OS variant.
+DISTRO=$(lsb_release -si)
+if [ "$DISTRO" = "Fedora" ]; then
+  OS_VARIANT="debian7"
+else
+  OS_VARIANT="virtio26"
+fi
+
 [ -f "$CDIR/docker.cfg" ] && DOCKER_CFG=$(cat $CDIR/docker.cfg 2>/dev/null)
 
 if [ -f "$CDIR/tectonic.lic" ]; then
@@ -177,7 +187,7 @@ for SEQ in $(seq 1 $1); do
     --ram $RAM \
     --vcpus $CPUs \
     --os-type=linux \
-    --os-variant=virtio26 \
+    --os-variant=$OS_VARIANT \
     --disk path=$IMG_PATH/$VM_HOSTNAME.qcow2,format=qcow2,bus=virtio \
     $CONFIG_DRIVE \
     --vnc \
